@@ -1,0 +1,1 @@
+{"parameters":[{"name":"Go/*","type":"Bool"},{"name":"Go/*","type":"Float"},{"name":"Go/*","type":"Int"},{"name":"OGB*","type":"Float"},{"name":"VF*","type":"Float"},{"name":"VRCFaceBlendV","type":"Float"},{"name":"VRCFaceBlendH","type":"Float"},{"name":"VRCEmote","type":"Int"},{"name":"OGB*","type":"Bool"}],"boolMode":"Whitelist","intMode":"Whitelist","floatMode":"Whitelist"}
