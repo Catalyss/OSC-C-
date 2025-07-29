@@ -10,11 +10,11 @@
         "projectUniqueName": "F:\\Java\\OSC C#\\OSC C#.csproj",
         "projectName": "OSC C#",
         "projectPath": "F:\\Java\\OSC C#\\OSC C#.csproj",
-        "packagesPath": "C:\\Users\\Cat\\.nuget\\packages\\",
+        "packagesPath": "C:\\Users\\Catalyss\\.nuget\\packages\\",
         "outputPath": "F:\\Java\\OSC C#\\obj\\",
         "projectStyle": "PackageReference",
         "configFilePaths": [
-          "C:\\Users\\Cat\\AppData\\Roaming\\NuGet\\NuGet.Config"
+          "C:\\Users\\Catalyss\\AppData\\Roaming\\NuGet\\NuGet.Config"
         ],
         "originalTargetFrameworks": [
           "net8.0"
@@ -37,7 +37,8 @@
           "enableAudit": "true",
           "auditLevel": "low",
           "auditMode": "direct"
-        }
+        },
+        "SdkAnalysisLevel": "9.0.100"
       },
       "frameworks": {
         "net8.0": {
@@ -71,7 +72,7 @@
               "privateAssets": "all"
             }
           },
-          "runtimeIdentifierGraphPath": "C:\\Program Files\\dotnet\\sdk\\8.0.302/PortableRuntimeIdentifierGraph.json"
+          "runtimeIdentifierGraphPath": "C:\\Program Files\\dotnet\\sdk\\9.0.102/PortableRuntimeIdentifierGraph.json"
         }
       }
     }

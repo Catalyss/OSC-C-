@@ -1,0 +1,8 @@
+bin/
+obj/
+lib/
+cert/
+parameters/
+states/
+bin/Debug/
+authcookie.txt

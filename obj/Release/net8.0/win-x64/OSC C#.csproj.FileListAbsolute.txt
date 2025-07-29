@@ -351,7 +351,6 @@ F:\Java\OSC C#\bin\Release\net8.0\win-x64\createdump.exe
 F:\Java\OSC C#\bin\Release\net8.0\win-x64\hostfxr.dll
 F:\Java\OSC C#\bin\Release\net8.0\win-x64\hostpolicy.dll
 F:\Java\OSC C#\bin\Release\net8.0\win-x64\mscordaccore.dll
-F:\Java\OSC C#\bin\Release\net8.0\win-x64\mscordaccore_amd64_amd64_8.0.624.26715.dll
 F:\Java\OSC C#\bin\Release\net8.0\win-x64\mscordbi.dll
 F:\Java\OSC C#\bin\Release\net8.0\win-x64\mscorrc.dll
 F:\Java\OSC C#\bin\Release\net8.0\win-x64\msquic.dll
@@ -376,3 +375,8 @@ F:\Java\OSC C#\obj\Release\net8.0\win-x64\refint\OSC C#.dll
 F:\Java\OSC C#\obj\Release\net8.0\win-x64\OSC C#.pdb
 F:\Java\OSC C#\obj\Release\net8.0\win-x64\OSC C#.genruntimeconfig.cache
 F:\Java\OSC C#\obj\Release\net8.0\win-x64\ref\OSC C#.dll
+F:\Java\OSC C#\obj\Release\net8.0\win-x64\OSC C#.sourcelink.json
+F:\Java\OSC C#\bin\Release\net8.0\win-x64\OSC C#.staticwebassets.endpoints.json
+F:\Java\OSC C#\obj\Release\net8.0\win-x64\staticwebassets.build.endpoints.json
+F:\Java\OSC C#\obj\Release\net8.0\win-x64\staticwebassets\msbuild.OSC C#.Microsoft.AspNetCore.StaticWebAssetEndpoints.props
+F:\Java\OSC C#\bin\Release\net8.0\win-x64\mscordaccore_amd64_amd64_8.0.1224.60305.dll

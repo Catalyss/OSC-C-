@@ -1,11 +1,12 @@
 {
   "Version": 1,
-  "Hash": "nLSbWykavSOfnY+xiwHvj1mbVvlBshxtYhhdK91qraI=",
+  "Hash": "K8P+f9A1HYwNhTYZIaUQ3kI0KclNd05GAGlDAuRBotU=",
   "Source": "OSC C#",
   "BasePath": "_content/OSC C#",
   "Mode": "Default",
   "ManifestType": "Publish",
   "ReferencedProjectsConfiguration": [],
   "DiscoveryPatterns": [],
-  "Assets": []
+  "Assets": [],
+  "Endpoints": []
 }

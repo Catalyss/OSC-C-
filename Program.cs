@@ -7,30 +7,1307 @@ using CoreOSC.IO;
 using CoreOSC;
 using Newtonsoft.Json;
 using System.Text.RegularExpressions;
+using System.Diagnostics;
+using System.Security.Cryptography.X509Certificates;
+using System.Security.Cryptography;
+using System.Net;
+using Microsoft.AspNetCore.Hosting;
+using System.Net.Http.Headers;
+using static LogProcessor;
 
 namespace OscWebServer
 {
     class Program
     {
-        private static string RoutingHTML = "<!DOCTYPE html>\n<html lang=\"en\">\n  <head>\n    <meta charset=\"UTF-8\" />\n    <meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\" />\n    <title>Routing Configuration</title>\n    <style>\n      footer {\n        display: flex;\n        justify-content: center;\n        position: fixed;\n        bottom: -10px;\n        left: 0px;\n        right: 0px;\n        margin-bottom: 0px;\n        padding: 0px;\n        color: #888888;\n      }\n      body {\n        font-family: Arial, sans-serif;\n        background-color: #121212;\n        color: #e0e0e0;\n        padding: 20px; /* Added padding for better layout */\n      }\n      .section {\n        margin-bottom: 20px;\n      }\n      .list-container {\n        display: flex;\n        flex-direction: column;\n        max-height: 300px;\n        overflow-y: auto;\n        border: 1px solid #ccc;\n        padding: 10px;\n        background-color: #2e2e2e;\n      }\n      .list-buttons {\n        margin-top: 10px;\n      }\n      .list-item {\n        display: flex;\n        justify-content: space-between;\n        margin-bottom: 5px;\n      }\n      textarea {\n        width: 80%;\n        resize: none;\n        color: white;\n        background-color: #464646;\n      }\n      select {\n        width: 15%;\n        color: white;\n        background-color: #464646;\n      }\n      button {\n        margin-right: 5px;\n        background-color: #007bff;\n        color: white;\n        border: none;\n        padding: 5px 10px;\n        cursor: pointer;\n      }\n      button:hover {\n        background-color: #0056b3;\n      }\n      .route {\n        margin-bottom: 15px;\n        background-color: #2e2e2e;\n        padding: 10px;\n        border-radius: 5px;\n      }\n      .output {\n        display: flex;\n        align-items: center;\n        margin-bottom: 5px;\n      }\n      .output input {\n        margin-right: 5px;\n      }\n      #routingContainer {\n        margin-bottom: 20px;\n      }\n    </style>\n  </head>\n  <body>\n    <button onclick=\"location.href='http://INSERTPUBLICIP/settings'\">← Go Back</button> \n    <h2>Edit Routing Configuration</h2>\n    <div id=\"routingContainer\" class=\"list-container\">\n      <!-- Existing routing data will be populated here -->\n    </div>\n    <div class=\"list-buttons\">\n      <button id=\"addRoute\">Add Route</button>\n    </div>\n    <br />\n    <button id=\"saveRouting\">Save Routing</button>\n    \n    <footer>\n        <p>Current OSC avatar ID : AVATARIDPLEASEBEHERE</p>\n      </footer>\n      \n    <script>\n      // Dynamically add routing rows\n      function addRoute(inputPort = \"\", outputs = []) {\n        const routeDiv = document.createElement(\"div\");\n        routeDiv.classList.add(\"route\");\n\n        const inputPortInput = document.createElement(\"input\");\n        inputPortInput.placeholder = \"Input Port\";\n        inputPortInput.value = inputPort;\n        routeDiv.appendChild(inputPortInput);\n\n        const outputsDiv = document.createElement(\"div\");\n        outputsDiv.classList.add(\"outputs\");\n\n        // Add existing outputs\n        outputs.forEach((output) =>\n          addOutput(outputsDiv, output.ip, output.port)\n        );\n\n        const addOutputButton = document.createElement(\"button\");\n        addOutputButton.textContent = \"Add Output\";\n        addOutputButton.addEventListener(\"click\", () => addOutput(outputsDiv));\n        routeDiv.appendChild(addOutputButton);\n\n        routeDiv.appendChild(outputsDiv);\n\n        const removeRouteButton = document.createElement(\"button\");\n        removeRouteButton.textContent = \"Remove Route\";\n        removeRouteButton.addEventListener(\"click\", () => routeDiv.remove());\n        routeDiv.appendChild(removeRouteButton);\n\n        document.getElementById(\"routingContainer\").appendChild(routeDiv);\n      }\n\n      // Dynamically add output fields\n      function addOutput(outputsDiv, ip = \"\", port = \"\") {\n        const outputDiv = document.createElement(\"div\");\n        outputDiv.classList.add(\"output\");\n\n        const ipInput = document.createElement(\"input\");\n        ipInput.placeholder = \"IP Address\";\n        ipInput.value = ip;\n        outputDiv.appendChild(ipInput);\n\n        const portInput = document.createElement(\"input\");\n        portInput.placeholder = \"Port\";\n        portInput.value = port;\n        outputDiv.appendChild(portInput);\n\n        const removeOutputButton = document.createElement(\"button\");\n        removeOutputButton.textContent = \"Remove Output\";\n        removeOutputButton.addEventListener(\"click\", () => outputDiv.remove());\n        outputDiv.appendChild(removeOutputButton);\n\n        outputsDiv.appendChild(outputDiv);\n      }\n\n      // Fetch the current routing configuration on page load\n      fetch(\"/api/loadRouting\")\n        .then((response) => response.json())\n        .then((data) => {\n          data.forEach((route) => addRoute(route.inputPort, route.outputs));\n        });\n\n      // Save the routing configuration\n      document.getElementById(\"saveRouting\").addEventListener(\"click\", () => {\n        const routing = Array.from(\n          document.getElementById(\"routingContainer\").children\n        ).map((routeDiv) => {\n          const inputPort = routeDiv.querySelector(\"input\").value;\n          const outputs = Array.from(\n            routeDiv.querySelector(\".outputs\").children\n          ).map((outputDiv) => {\n            return {\n              ip: outputDiv.querySelector(\"input\").value,\n              port: outputDiv.querySelectorAll(\"input\")[1].value,\n            };\n          });\n          return { inputPort: inputPort, outputs: outputs };\n        });\n\n        fetch(\"/api/saveRouting\", {\n          method: \"POST\",\n          headers: { \"Content-Type\": \"application/json\" },\n          body: JSON.stringify(routing),\n        }).then((response) => {\n          if (response.ok) {\n            alert(\"Routing saved!\");\n          } else {\n            alert(\"Error saving routing.\");\n          }\n        });\n      });\n\n      document.getElementById(\"addRoute\").addEventListener(\"click\", () => {\n        addRoute(); // Add an empty route for the user to fill in\n      });\n    </script>\n  </body>\n</html>\n";
-        private static string indexHTML = "<html><head><meta charset=\"UTF-8\"><meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">\n<style>\nbody { background-color: #121212; color: #e0e0e0; font-family: Arial, sans-serif; padding: 10px; }\nh1 { text-align: center; font-size: 2em; }\n.toggle { position: relative; display: inline-block; width: 60px; height: 34px; margin-bottom: 10px; }\n.toggle input { opacity: 0; width: 0; height: 0; }\n.slider { position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0; background-color: #333; transition: .4s; border-radius: 34px; }\n.slider:before { position: absolute; content: ''; height: 26px; width: 26px; border-radius: 50%; background-color: #e0e0e0; transition: .4s; }\ninput:checked + .slider { background-color: #2196F3; }\ninput:checked + .slider:before { transform: translateX(26px); }\n.range-slider { width: 100%; background-color: #333; color: #e0e0e0; margin-bottom: 10px; }\n.value-display { font-weight: bold; margin-left: 10px; }\nbutton { padding: 10px 15px; font-size: 1.2em; margin: 5px 0; background-color: #2196F3; color: white; border: none; cursor: pointer; width: 100%; }\nbutton:disabled { background-color: #555; }\n.container { display: flex; flex-wrap: wrap; gap: 10px; justify-content: space-between; }\n.button-container { display: flex; flex-direction: column; align-items: center; width: 100%; max-width: 200px; margin: 10px auto; }\n.parameter-container { border: 1px solid #e0e0e0; padding: 10px; margin-bottom: 15px; border-radius: 8px; }\n.param-header { text-align: center; font-weight: bold; font-size: 1.2em; margin-bottom: 10px; }\n.increment-buttons { text-align: center; margin-top: 10px; }\n.button-row { display: flex; justify-content: center; gap: 5px; margin-bottom: 5px; }\n.bool-button { background-color: #333; color: #e0e0e0; border: none; padding: 15px; cursor: pointer; width: 100%; text-align: center; border-radius: 8px; font-size: 1.2em; }\n.bool-button.on { background-color: #2196F3; color: white; }\n.bool-button.off { background-color: #555; color: #e0e0e0; }\nfooter {\n  display: flex;\n  justify-content: center;\n  position: fixed;\n  bottom: -10px;\n  left: 0px;\n  right: 0px;\n  margin-bottom: 0px;\n  padding: 0px;\n  color: #888888;\n}\n</style></head><body>\n<h1>OSC Remote Control Panel</h1>\n  <button onclick=\"location.href='http://PUBLICIPGOESHERE/settings'\">Setting page</button>\n<div class=\"container\">\n</div>\n\n<script>\n  var ws = new WebSocket(`ws://PUBLICIPGOESHERE/ws`);\n\n  ws.onopen = function() {\n    console.log('WebSocket connection established.');\n  };\n\n  ws.onclose = function() {\n    console.log('WebSocket connection closed.');\n  };\n\n  ws.onmessage = function(event) {\n    var data = JSON.parse(event.data);\n\n    if (data.action === 'updateHtml') {\n      // Update the entire HTML content\n      document.open();\n      document.write(decodeURIComponent(data.html));\n      document.close();\n    } else if (data.param) {\n      var param = data.param;\n      var value = data.value;\n      var slider = document.getElementById(`slider-${param}`);\n      var toggleButton = document.getElementById(`${param}`);\n\n      // Update slider values\n      if (slider) {\n        slider.value = value;\n        updateValueDisplay(param, value);\n      }\n\n      // Update toggle button states\n      if (toggleButton) {\n        var isOn = value === 't';\n        toggleButton.classList.toggle('on', !isOn);\n        toggleButton.classList.toggle('off', isOn);\n        toggleBool(param, toggleButton)\n      }\n    }\n  };\n</script>\n<footer>\n  <p>Current OSC avatar ID : no avatar loaded</p>\n</footer>\n</body></html>\n";
-        private static string avatarsettingsHTML = "<!DOCTYPE html>\n<html lang=\"en\">\n  <head>\n    <meta charset=\"UTF-8\" />\n    <meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\" />\n    <title>Edit AvatarID Parameters</title>\n    <style>\n        \n      footer {\n        display: flex;\n        justify-content: center;\n        position: fixed;\n        bottom: -10px;\n        left: 0px;\n        right: 0px;\n        margin-bottom: 0px;\n        padding: 0px;\n        color: #888888;\n      }\n      body {\n        font-family: Arial, sans-serif;\n        background-color: #121212;\n        color: #e0e0e0;\n      }\n      .section {\n        margin-bottom: 20px;\n      }\n      .list-container {\n        display: flex;\n        flex-direction: column;\n        max-height: 300px;\n        overflow-y: auto;\n        border: 1px solid #ccc;\n        padding: 10px;\n        background-color: #2e2e2e;\n      }\n      .list-buttons {\n        margin-top: 10px;\n      }\n      .list-item {\n        display: flex;\n        justify-content: space-between;\n        margin-bottom: 5px;\n      }\n      textarea {\n        width: 80%;\n        resize: none;\n        color: white;\n        background-color: #464646;\n      }\n      select {\n        width: 15%;\n        color: white;\n        background-color: #464646;\n      }\n      button {\n        margin-right: 5px;\n        background-color: #007bff;\n        color: white;\n        border: none;\n        padding: 5px 10px;\n        cursor: pointer;\n      }\n      button:hover {\n        background-color: #0056b3;\n      }\n    </style>\n  </head>\n  <body>\n    <button onclick=\"location.href='http://INSERTPUBLICIP/settings'\">← Go Back</button> <h1>Edit Parameters for AvatarID: {{AVATARID}}</h1>\n\n    <div class=\"section\">\n      <h2>Per-Avatar Parameter List</h2>\n      <div class=\"list-container\" id=\"avatarParamList\">\n        <!-- List of parameters for this AvatarID will go here -->\n      </div>\n      <div class=\"list-buttons\">\n        <button id=\"addAvatarParam\">+</button>\n        <button id=\"toggleBoolMode\">Switch Bool to Whitelist</button>\n        <button id=\"toggleIntMode\">Switch Int to Whitelist</button>\n        <button id=\"toggleFloatMode\">Switch Float to Whitelist</button>\n      </div>\n    </div>\n\n    <button id=\"saveAvatarSettings\">Save Settings</button>\n    <button id=\"deletedAvatarSettings\">Delete Settings</button>\n\n    <footer>\n        <p>Current OSC avatar ID : AVATARIDPLEASEBEHERE</p>\n      </footer>\n    <script>\n      const avatarId = \"{{AVATARID}}\"; // AvatarID dynamically set from URL\n      // Toggle between blacklist and whitelist for AvatarID\n      let boolMode = \"Whitelist\";\n      let intMode = \"Whitelist\";\n      let floatMode = \"Whitelist\";\n\n      // Toggle Bool Mode\n      document\n        .getElementById(\"toggleBoolMode\")\n        .addEventListener(\"click\", () => {\n          const button = document.getElementById(\"toggleBoolMode\");\n          boolMode = boolMode === \"Whitelist\" ? \"Blacklist\" : \"Whitelist\";\n          button.textContent = `Switch Bool to ${boolMode}`;\n        });\n\n      // Toggle Int Mode\n      document.getElementById(\"toggleIntMode\").addEventListener(\"click\", () => {\n        const button = document.getElementById(\"toggleIntMode\");\n        intMode = intMode === \"Whitelist\" ? \"Blacklist\" : \"Whitelist\";\n        button.textContent = `Switch Int to ${intMode}`;\n      });\n\n      // Toggle Float Mode\n      document\n        .getElementById(\"toggleFloatMode\")\n        .addEventListener(\"click\", () => {\n          const button = document.getElementById(\"toggleFloatMode\");\n          floatMode = floatMode === \"Whitelist\" ? \"Blacklist\" : \"Whitelist\";\n          button.textContent = `Switch Float to ${floatMode}`;\n        });\n\n      // Load settings for this AvatarID on page load\n      fetch(`/api/loadAvatarSettings/${avatarId}`)\n        .then((response) => response.json())\n        .then((data) => {\n          const list = document.getElementById(\"avatarParamList\");\n          data.parameters.forEach((param) => {\n            addParamToList(list, param.name, param.type);\n          });\n          // Set the toggle states based on loaded data\n          if (data.boolMode) {\n            boolMode = data.boolMode;\n            document.getElementById(\n              \"toggleBoolMode\"\n            ).textContent = `Switch Bool to ${boolMode}`;\n          }\n          if (data.intMode) {\n            intMode = data.intMode;\n            document.getElementById(\n              \"toggleIntMode\"\n            ).textContent = `Switch Int to ${intMode}`;\n          }\n          if (data.floatMode) {\n            floatMode = data.floatMode;\n            document.getElementById(\n              \"toggleFloatMode\"\n            ).textContent = `Switch Float to ${floatMode}`;\n          }\n        });\n\n      // Functionality to add a new parameter\n      document\n        .getElementById(\"addAvatarParam\")\n        .addEventListener(\"click\", () => {\n          const list = document.getElementById(\"avatarParamList\");\n          addParamToList(list, \"\", \"Bool\");\n        });\n      function addParamToList(list, paramName, paramType) {\n        const listItem = document.createElement(\"div\");\n        listItem.classList.add(\"list-item\");\n\n        // Textarea for parameter name\n        const textarea = document.createElement(\"textarea\");\n        textarea.placeholder = \"Enter Parameter Name...\";\n        textarea.value = paramName;\n        listItem.appendChild(textarea);\n\n        // Dropdown for parameter type\n        const select = document.createElement(\"select\");\n        const options = [\"Bool\", \"Float\", \"Int\"];\n        options.forEach((opt) => {\n          const optionElement = document.createElement(\"option\");\n          optionElement.value = opt;\n          optionElement.textContent = opt;\n          if (opt === paramType) {\n            optionElement.selected = true;\n          }\n          select.appendChild(optionElement);\n        });\n        listItem.appendChild(select);\n\n        // Remove button\n        const removeButton = document.createElement(\"button\");\n        removeButton.textContent = \"X   \";\n        removeButton.addEventListener(\"click\", () => {\n          list.removeChild(listItem); // Remove the parameter from the list\n        });\n        listItem.appendChild(removeButton);\n\n        // Append the complete list item to the list\n        list.appendChild(listItem);\n      }\n\n      // Save settings\n      document\n        .getElementById(\"saveAvatarSettings\")\n        .addEventListener(\"click\", () => {\n          const list = document.getElementById(\"avatarParamList\");\n          const parameters = Array.from(list.children).map((item) => {\n            return {\n              name: item.querySelector(\"textarea\").value,\n              type: item.querySelector(\"select\").value,\n            };\n          });\n\n          const data = {\n            parameters,\n            boolMode, // Add current Bool mode\n            intMode, // Add current Int mode\n            floatMode, // Add current Float mode\n          };\n\n          fetch(`/api/saveAvatarSettings/${avatarId}`, {\n            method: \"POST\",\n            headers: { \"Content-Type\": \"application/json\" },\n            body: JSON.stringify(data),\n          }).then((response) => {\n            if (response.ok) {\n              alert(\"Settings saved!\");\n            } else {\n              alert(\"Error saving settings.\");\n            }\n          });\n        });\n\n      document\n        .getElementById(\"deletedAvatarSettings\")\n        .addEventListener(\"click\", () => {\n          fetch(`/api/delete/${avatarId}`, {\n            method: \"POST\",\n          })\n            .then((response) => {\n              if (response.ok) {\n                // Check if the response status is OK\n                window.location.href = \"/settings\"; // Redirect to Settings.html\n              } else {\n                alert(\"Error deleting AvatarID.\");\n              }\n            })\n            .catch((error) => {\n              console.error(\"Fetch error:\", error);\n              alert(\"An error occurred while trying to delete the AvatarID.\");\n            });\n        });\n    </script>\n  </body>\n</html>\n";
-        private static string SettingsHTML = "<!DOCTYPE html>\n<html lang=\"en\">\n  <head>\n    <meta charset=\"UTF-8\" />\n    <meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\" />\n    <title>Settings</title>\n    <style>\n      footer {\n        display: flex;\n        justify-content: center;\n        position: fixed;\n        bottom: -10px;\n        left: 0px;\n        right: 0px;\n        margin-bottom: 0px;\n        padding: 0px;\n        color: #888888;\n      }\n      body {\n        font-family: Arial, sans-serif;\n        background-color: #121212;\n        color: #e0e0e0;\n      }\n      .section {\n        margin-bottom: 20px;\n      }\n      .list-container {\n        display: flex;\n        flex-direction: column;\n        max-height: 300px;\n        overflow-y: auto;\n        border: 1px solid #ccc;\n        padding: 10px;\n        background-color: #2e2e2e;\n      }\n      .list-buttons {\n        margin-top: 10px;\n      }\n      .list-item {\n        display: flex;\n        justify-content: space-between;\n        margin-bottom: 5px;\n      }\n      textarea {\n        width: 80%;\n        resize: none;\n        color: white;\n        background-color: #464646;\n      }\n      select {\n        width: 15%;\n        color: white;\n        background-color: #464646;\n      }\n      button {\n        margin-right: 5px;\n        background-color: #007bff;\n        color: white;\n        border: none;\n        padding: 5px 10px;\n        cursor: pointer;\n      }\n      button:hover {\n        background-color: #0056b3;\n      }\n    </style>\n  </head>\n  <body>\n    <button onclick=\"location.href='http://INSERTPUBLICIP/'\">← Go Back</button>\n    <button onclick=\"location.href='http://INSERTPUBLICIP/settings/routing'\">→ Routing Panel</button>\n    <h1>Settings</h1>\n\n    <!-- AvatarID Blacklist/Whitelist -->\n    <div class=\"section\">\n      <h2>AvatarID List</h2>\n      <div class=\"list-container\" id=\"avatarIdList\">\n        <!-- List of Avatar IDs will go here -->\n      </div>\n      <div class=\"list-buttons\">\n        <button id=\"addAvatarId\">+</button>\n        <button id=\"toggleAvatarMode\">Switch to Whitelist</button>\n      </div>\n    </div>\n\n    <button id=\"saveIDSettings\">Save AvatarID Settings</button>\n\n    <!-- Global Parameter List -->\n    <div class=\"section\">\n      <h2>Global Parameter List</h2>\n      <div class=\"list-container\" id=\"avatarParamList\">\n        <!-- Global Parameter List will go here -->\n      </div>\n      <div class=\"list-buttons\">\n        <button id=\"addAvatarParam\">+</button>\n        <button id=\"toggleBoolMode\">Switch Bool to Whitelist</button>\n        <button id=\"toggleIntMode\">Switch Int to Whitelist</button>\n        <button id=\"toggleFloatMode\">Switch Float to Whitelist</button>\n      </div>\n    </div>\n\n    <button id=\"saveAvatarSettings\">Save Global Parameter Settings</button>\n\n    <!-- Other Pages Listing -->\n    <div class=\"section\">\n      <h2>Avatar File Listing</h2>\n      <div class=\"list-container\" id=\"avatarParamList\">\n        <!-- List of parameters for this AvatarID will go here -->\n      </div>\n    </div>\n\n    <footer>\n      <p>Current OSC avatar ID : AVATARIDPLEASEBEHERE</p>\n    </footer>\n    <script>\n      // Functionality to handle adding and removing items for AvatarID\n      document.getElementById(\"addAvatarId\").addEventListener(\"click\", () => {\n        const list = document.getElementById(\"avatarIdList\");\n        const listItem = document.createElement(\"div\");\n        listItem.classList.add(\"list-item\");\n\n        const textarea = document.createElement(\"textarea\");\n        textarea.placeholder = \"Enter AvatarID...\";\n        listItem.appendChild(textarea);\n\n        const openParamsButton = document.createElement(\"button\");\n        openParamsButton.textContent = \"Edit Params\";\n        openParamsButton.addEventListener(\"click\", () => {\n          const avatarId = textarea.value; // Use the typed AvatarID from the textarea\n          if (avatarId) {\n            window.location.href = `/settings/${avatarId}`; // Navigate to /settings/AVATARID\n          } else {\n            alert(\"Please enter a valid AvatarID.\");\n          }\n        });\n        listItem.appendChild(openParamsButton);\n\n        // Add remove button for each AvatarID\n        const removeButton = document.createElement(\"button\");\n        removeButton.textContent = \"-\";\n        removeButton.addEventListener(\"click\", () => {\n          list.removeChild(listItem); // Remove the AvatarID from the list\n        });\n        listItem.appendChild(removeButton);\n\n        list.appendChild(listItem);\n      });\n\n      let isWhiteList = true; // Initialize as true, assuming it starts in whitelist mode\n      function addAvatarIdToList(list, avatarId) {\n        const listItem = document.createElement(\"div\");\n        listItem.classList.add(\"list-item\");\n\n        const textarea = document.createElement(\"textarea\");\n        textarea.placeholder = \"Enter AvatarID...\";\n        textarea.value = avatarId; // Set the value to the existing AvatarID\n        listItem.appendChild(textarea);\n\n        const openParamsButton = document.createElement(\"button\");\n        openParamsButton.textContent = \"Edit Params\";\n        openParamsButton.addEventListener(\"click\", () => {\n          const avatarId = textarea.value; // Use the typed AvatarID from the textarea\n          if (avatarId) {\n            window.location.href = `/settings/${avatarId}`; // Navigate to /settings/AVATARID\n          } else {\n            alert(\"Please enter a valid AvatarID.\");\n          }\n        });\n        listItem.appendChild(openParamsButton);\n\n        // Add remove button for each AvatarID\n        const removeButton = document.createElement(\"button\");\n        removeButton.textContent = \"-\";\n        removeButton.addEventListener(\"click\", () => {\n          list.removeChild(listItem); // Remove the AvatarID from the list\n        });\n        listItem.appendChild(removeButton);\n\n        list.appendChild(listItem);\n      }\n\n      // Toggle between blacklist and whitelist for AvatarID\n      document\n        .getElementById(\"toggleAvatarMode\")\n        .addEventListener(\"click\", () => {\n          const button = document.getElementById(\"toggleAvatarMode\");\n          isWhiteList = !isWhiteList; // Toggle the boolean value\n          button.textContent = isWhiteList\n            ? \"Switch to Blacklist\"\n            : \"Switch to Whitelist\";\n        });\n\n      // Load AvatarID List on page load\n      fetch(\"/api/loadAvatarListing\")\n        .then((response) => response.json())\n        .then((data) => {\n          const list = document.getElementById(\"avatarIdList\");\n          data.avatarIds.forEach((avatarId) => {\n            addAvatarIdToList(list, avatarId);\n          });\n          isWhiteList = data.IsWhiteList || true; // Set the initial state from loaded data\n          document.getElementById(\"toggleAvatarMode\").textContent = isWhiteList\n            ? \"Switch to Blacklist\"\n            : \"Switch to Whitelist\"; // Update button text\n        });\n\n      document\n        .getElementById(\"saveIDSettings\")\n        .addEventListener(\"click\", () => {\n          const list = document.getElementById(\"avatarIdList\");\n          const avatarIds = Array.from(list.children).map((item) => {\n            return item.querySelector(\"textarea\").value;\n          });\n\n          const data = {\n            avatarIds,\n            IsWhiteList: isWhiteList, // Include the boolean value\n          };\n\n          fetch(\"/api/saveAvatarListing\", {\n            method: \"POST\",\n            headers: { \"Content-Type\": \"application/json\" },\n            body: JSON.stringify(data),\n          }).then((response) => {\n            if (response.ok) {\n              alert(\"AvatarID list saved!\");\n            } else {\n              alert(\"Error saving AvatarID list.\");\n            }\n          });\n        });\n\n      let boolMode = \"Whitelist\";\n      let intMode = \"Whitelist\";\n      let floatMode = \"Whitelist\";\n\n      // Toggle Bool Mode\n      document\n        .getElementById(\"toggleBoolMode\")\n        .addEventListener(\"click\", () => {\n          const button = document.getElementById(\"toggleBoolMode\");\n          boolMode = boolMode === \"Whitelist\" ? \"Blacklist\" : \"Whitelist\";\n          button.textContent = `Switch Bool to ${boolMode}`;\n        });\n\n      // Toggle Int Mode\n      document.getElementById(\"toggleIntMode\").addEventListener(\"click\", () => {\n        const button = document.getElementById(\"toggleIntMode\");\n        intMode = intMode === \"Whitelist\" ? \"Blacklist\" : \"Whitelist\";\n        button.textContent = `Switch Int to ${intMode}`;\n      });\n\n      // Toggle Float Mode\n      document\n        .getElementById(\"toggleFloatMode\")\n        .addEventListener(\"click\", () => {\n          const button = document.getElementById(\"toggleFloatMode\");\n          floatMode = floatMode === \"Whitelist\" ? \"Blacklist\" : \"Whitelist\";\n          button.textContent = `Switch Float to ${floatMode}`;\n        });\n\n      // Load settings for this AvatarID on page load\n      fetch(`/api/loadAvatarSettings/Global`)\n        .then((response) => response.json())\n        .then((data) => {\n          const list = document.getElementById(\"avatarParamList\");\n          data.parameters.forEach((param) => {\n            addParamToList(list, param.name, param.type);\n          });\n          // Set the toggle states based on loaded data\n          if (data.boolMode) {\n            boolMode = data.boolMode;\n            document.getElementById(\n              \"toggleBoolMode\"\n            ).textContent = `Switch Bool to ${boolMode}`;\n          }\n          if (data.intMode) {\n            intMode = data.intMode;\n            document.getElementById(\n              \"toggleIntMode\"\n            ).textContent = `Switch Int to ${intMode}`;\n          }\n          if (data.floatMode) {\n            floatMode = data.floatMode;\n            document.getElementById(\n              \"toggleFloatMode\"\n            ).textContent = `Switch Float to ${floatMode}`;\n          }\n        });\n\n      // Functionality to add a new parameter\n      document\n        .getElementById(\"addAvatarParam\")\n        .addEventListener(\"click\", () => {\n          const list = document.getElementById(\"avatarParamList\");\n          addParamToList(list, \"\", \"Bool\");\n        });\n      function addParamToList(list, paramName, paramType) {\n        const listItem = document.createElement(\"div\");\n        listItem.classList.add(\"list-item\");\n\n        // Textarea for parameter name\n        const textarea = document.createElement(\"textarea\");\n        textarea.placeholder = \"Enter Parameter Name...\";\n        textarea.value = paramName;\n        listItem.appendChild(textarea);\n\n        // Dropdown for parameter type\n        const select = document.createElement(\"select\");\n        const options = [\"Bool\", \"Float\", \"Int\"];\n        options.forEach((opt) => {\n          const optionElement = document.createElement(\"option\");\n          optionElement.value = opt;\n          optionElement.textContent = opt;\n          if (opt === paramType) {\n            optionElement.selected = true;\n          }\n          select.appendChild(optionElement);\n        });\n        listItem.appendChild(select);\n\n        // Remove button\n        const removeButton = document.createElement(\"button\");\n        removeButton.textContent = \"X   \";\n        removeButton.addEventListener(\"click\", () => {\n          list.removeChild(listItem); // Remove the parameter from the list\n        });\n        listItem.appendChild(removeButton);\n\n        // Append the complete list item to the list\n        list.appendChild(listItem);\n      }\n\n      // Save settings\n      document\n        .getElementById(\"saveAvatarSettings\")\n        .addEventListener(\"click\", () => {\n          const list = document.getElementById(\"avatarParamList\");\n          const parameters = Array.from(list.children).map((item) => {\n            return {\n              name: item.querySelector(\"textarea\").value,\n              type: item.querySelector(\"select\").value,\n            };\n          });\n\n          const data = {\n            parameters,\n            boolMode, // Add current Bool mode\n            intMode, // Add current Int mode\n            floatMode, // Add current Float mode\n          };\n\n          fetch(`/api/saveAvatarSettings/Global`, {\n            method: \"POST\",\n            headers: { \"Content-Type\": \"application/json\" },\n            body: JSON.stringify(data),\n          }).then((response) => {\n            if (response.ok) {\n              alert(\"Settings saved!\");\n            } else {\n              alert(\"Error saving settings.\");\n            }\n          });\n        });\n    </script>\n  </body>\n</html>\n";
+        private static string logHTML = "<html>\n" +
+            "  <head>\n" +
+            "    <meta charset=\"UTF-8\" />\n" +
+            "    <meta name=\"viewport\" content=\"width=device-width, initial-scale=1\" />\n" +
+            "    <style>\n" +
+            "      body {\n" +
+            "        background-color: #121212;\n" +
+            "        color: #e0e0e0;\n" +
+            "        font-family: Arial, sans-serif;\n" +
+            "        padding: 10px;\n" +
+            "        height: 100vh;\n" +
+            "        display: flex;\n" +
+            "        flex-direction: column;\n" +
+            "        justify-content: space-between;\n" +
+            "      }\n" +
+            "\n" +
+            "      h1 {\n" +
+            "        text-align: center;\n" +
+            "        font-size: 2em;\n" +
+            "      }\n" +
+            "\n" +
+            "      .toggle {\n" +
+            "        position: relative;\n" +
+            "        display: inline-block;\n" +
+            "        width: 60px;\n" +
+            "        height: 34px;\n" +
+            "        margin-bottom: 10px;\n" +
+            "      }\n" +
+            "\n" +
+            "      .toggle input {\n" +
+            "        opacity: 0;\n" +
+            "        width: 0;\n" +
+            "        height: 0;\n" +
+            "      }\n" +
+            "\n" +
+            "      .slider {\n" +
+            "        position: absolute;\n" +
+            "        cursor: pointer;\n" +
+            "        top: 0;\n" +
+            "        left: 0;\n" +
+            "        right: 0;\n" +
+            "        bottom: 0;\n" +
+            "        background-color: #333;\n" +
+            "        transition: 0.4s;\n" +
+            "        border-radius: 34px;\n" +
+            "      }\n" +
+            "\n" +
+            "      .slider:before {\n" +
+            "        position: absolute;\n" +
+            "        content: \"\";\n" +
+            "        height: 26px;\n" +
+            "        width: 26px;\n" +
+            "        border-radius: 50%;\n" +
+            "        background-color: #e0e0e0;\n" +
+            "        transition: 0.4s;\n" +
+            "      }\n" +
+            "\n" +
+            "      input:checked + .slider {\n" +
+            "        background-color: #2196f3;\n" +
+            "      }\n" +
+            "\n" +
+            "      input:checked + .slider:before {\n" +
+            "        transform: translateX(26px);\n" +
+            "      }\n" +
+            "\n" +
+            "      #logContainer {\n" +
+            "        flex: 1;\n" +
+            "        overflow-y: auto;\n" +
+            "        margin-bottom: 10px;\n" +
+            "        max-height: calc(100vh - 150px);\n" +
+            "      }\n" +
+            "\n" +
+            "      #logTable {\n" +
+            "        width: 100%;\n" +
+            "        border-collapse: collapse;\n" +
+            "      }\n" +
+            "      #logTable th,\n" +
+            "      #logTable td {\n" +
+            "        border: 1px solid #444;\n" +
+            "        padding: 8px;\n" +
+            "        text-align: left;\n" +
+            "      }\n" +
+            "\n" +
+            "      #logTable th {\n" +
+            "        background-color: #333;\n" +
+            "        position: sticky;\n" +
+            "        top: 0;\n" +
+            "        z-index: 1;\n" +
+            "      }\n" +
+            "\n" +
+            "      button {\n" +
+            "        padding: 10px 15px;\n" +
+            "        font-size: 1.2em;\n" +
+            "        margin: 5px 0;\n" +
+            "        background-color: #2196f3;\n" +
+            "        color: white;\n" +
+            "        border: none;\n" +
+            "        cursor: pointer;\n" +
+            "        width: 100%;\n" +
+            "      }\n" +
+            "\n" +
+            "      button:disabled {\n" +
+            "        background-color: #555;\n" +
+            "      }\n" +
+            "\n" +
+            "      footer {\n" +
+            "        display: flex;\n" +
+            "        justify-content: center;\n" +
+            "        position: fixed;\n" +
+            "        bottom: 10px;\n" +
+            "        left: 0;\n" +
+            "        right: 0;\n" +
+            "        color: #888888;\n" +
+            "      }\n" +
+            "\n" +
+            "      #toggleScrollButton {\n" +
+            "        background-color: #333;\n" +
+            "        color: #e0e0e0;\n" +
+            "      }\n" +
+            "    </style>\n" +
+            "  </head>\n" +
+            "  <body>\n" +
+            "    <h1>Log Console</h1>\n" +
+            "    <input\n" +
+            "      type=\"text\"\n" +
+            "      id=\"logFilter\"\n" +
+            "      placeholder=\"Filter logs...\"\n" +
+            "      onkeydown=\"checkEnter(event)\"\n" +
+            "      oninput=\"delayedFilter()\"\n" +
+            "    />\n" +
+            "    <div id=\"logContainer\">\n" +
+            "      <table id=\"logTable\">\n" +
+            "        <thead>\n" +
+            "          <tr>\n" +
+            "            <th>Timestamp</th>\n" +
+            "            <th>Message</th>\n" +
+            "          </tr>\n" +
+            "        </thead>\n" +
+            "        <tbody>\n" +
+            "          <!-- Log entries will go here -->\n" +
+            "        </tbody>\n" +
+            "      </table>\n" +
+            "    </div>\n" +
+            "\n" +
+            "    <button id=\"toggleScrollButton\" onclick=\"toggleAutoScroll()\">\n" +
+            "      Toggle Auto-Scroll\n" +
+            "    </button>\n" +
+            "\n" +
+            "    <script>\n" +
+            "      let autoScrollEnabled = false;\n" +
+            "      var ws = new WebSocket(`" + wsTXTReplace + "PUBLICIPGOESHERE/ws`);\n" +
+            "\n" +
+            "      ws.onopen = function () {\n" +
+            "        console.log(\"WebSocket connection established.\");\n" +
+            "      };\n" +
+            "\n" +
+            "      ws.onclose = function () {\n" +
+            "        console.log(\"WebSocket connection closed.\");\n" +
+            "      };\n" +
+            "\n" +
+            "      ws.onmessage = function (event) {\n" +
+            "        var data = JSON.parse(event.data);\n" +
+            "\n" +
+            "        if (data.action === \"logMessage\") {\n" +
+            "          addLog(data.timestamp, data.message);\n" +
+            "        }\n" +
+            "      };\n" +
+            "\n" +
+            "      // Function to add log entry\n" +
+            "      function addLog(timestamp, message) {\n" +
+            "        var table = document\n" +
+            "          .getElementById(\"logTable\")\n" +
+            "          .getElementsByTagName(\"tbody\")[0];\n" +
+            "        var row = table.insertRow();\n" +
+            "        var buttonHtml = \"\";\n" +
+            "\n" +
+            "        // Check if the message contains \"avtr\"\n" +
+            "        if (message.includes(\"avtr\")) {\n" +
+            "          var avatarIdMatch = message.match(/avtr_[\\w-]+/);\n" +
+            "          if (avatarIdMatch) {\n" +
+            "            var avatarId = avatarIdMatch[0];\n" +
+            "            buttonHtml = `<button onclick=\"window.open('https://vrchat.com/home/avatar/${avatarId}', '_blank')\">View Avatar</button>`;\n" +
+            "            buttonHtml += `<button onclick=\"LoadSelectedAvatars('${avatarId}')\">Select Avatar</button>`;\n" +
+            "          }\n" +
+            "        }\n" +
+            "\n" +
+            "        // Check if the message contains \"usr\" (User)\n" +
+            "        if (message.includes(\"usr_\")) {\n" +
+            "          var userIdMatch = message.match(/usr_[\\w-]+/);\n" +
+            "          if (userIdMatch) {\n" +
+            "            var userId = userIdMatch[0];\n" +
+            "            buttonHtml = `<button onclick=\"window.open('https://vrchat.com/home/user/${userId}', '_blank')\">View User</button>`;\n" +
+            "          }\n" +
+            "        }\n" +
+            "\n" +
+            "        // Check if the message contains \"wrld\" (World)\n" +
+            "        if (message.includes(\"wrld\")) {\n" +
+            "          var worldIdMatch = message.match(/wrld_[\\w-]+/);\n" +
+            "          if (worldIdMatch) {\n" +
+            "            var worldId = worldIdMatch[0];\n" +
+            "\n" +
+            "            // Case 1: Regular world link (no instance)\n" +
+            "            if (message.includes(worldId) && !message.includes(\":\")) {\n" +
+            "              buttonHtml = `<button onclick=\"window.open('https://vrchat.com/home/world/${worldId}', '_blank')\">View World</button>`;\n" +
+            "            }\n" +
+            "\n" +
+            "            // Case 2: World with instance ID (contains `:`)\n" +
+            "            else if (message.includes(worldId) && message.includes(\":\")) {\n" +
+            "              var instanceIdMatch = message.match(/wrld_[\\w-]+:\\d+/);\n" +
+            "              if (instanceIdMatch) {\n" +
+            "                var instanceId = instanceIdMatch[0].split(\":\")[1];\n" +
+            "                var instanceParams = message\n" +
+            "                  .split(\":\")[1]\n" +
+            "                  .split(\"~\")\n" +
+            "                  .slice(1)\n" +
+            "                  .join(\"~\");\n" +
+            "\n" +
+            "                // Launch world with instance ID\n" +
+            "                buttonHtml = `<button onclick=\"window.open('https://vrchat.com/home/launch?worldId=${worldId}&instanceId=${instanceId}${\n" +
+            "                  instanceParams ? \"&\" + instanceParams : \"\"\n" +
+            "                }', '_blank')\">Launch World</button>`;\n" +
+            "              }\n" +
+            "            }\n" +
+            "          }\n" +
+            "        }\n" +
+            "  if (message.includes(\"analysis/file_\")) {\n" +
+            "    var fileMatch = message.match(/analysis\\/(file_[\\w-]+)/);\n" +
+            "    if (fileMatch) {\n" +
+            "      var fileId = fileMatch[1];\n" +
+            "      buttonHtml += `<button onclick=\"window.open('https://vrchat.com/api/1/file/${fileId}', '_blank')\">Open File</button>`;\n" +
+            "    }\n" +
+            "  }" +
+            "        // Check for general URLs\n" +
+            "        var urlMatch = message.match(/https?:\\/\\/[^\\s]+/g);\n" +
+            "        if (urlMatch) {\n" +
+            "          let cleanedURL = urlMatch[0].replace(\"api.vrchat.cloud\", \"vrchat.com\");\n" +
+            "          buttonHtml += `<button onclick=\"window.open('${cleanedURL}', '_blank')\">Open Weblink</button>`;\n" +
+            "        }\n" +
+            "\n" +
+            "        row.innerHTML = `<td>${timestamp}</td><td>${message} ${buttonHtml}</td>`;\n" +
+            "\n" +
+            "        // Scroll to the latest log entry if auto-scroll is enabled\n" +
+            "        if (autoScrollEnabled) {\n" +
+            "          var container = document.getElementById(\"logContainer\");\n" +
+            "          container.scrollTop = container.scrollHeight;\n" +
+            "        }\n" +
+            "      }\n" +
+            "\n" +
+            "       function LoadSelectedAvatars(avatarId) {\n" +
+            "         fetch(`/select-avatar?avtr=${avatarId}`, {\n" +
+            "           method: \"POST\",\n" +
+            "         })\n" +
+            "           .then(response => {\n" +
+            "             if (response.ok) {\n" +
+            "               alert(\"Avatar selected!\");\n" +
+            "             } else {\n" +
+            "               alert(\"Failed to select avatar.\");\n" +
+            "             }\n" +
+            "           })\n" +
+            "           .catch(error => {\n" +
+            "             console.error(\"Error selecting avatar:\", error);\n" +
+            "             alert(\"Error selecting avatar.\");\n" +
+            "           });\n" +
+            "       }\n" +
+            "\n" +
+            "      function filterLogs() {\n" +
+            "\n" +
+            "        var filterValue = document\n" +
+            "          .getElementById(\"logFilter\")\n" +
+            "          .value.toLowerCase();\n" +
+            "        var rows = document\n" +
+            "          .getElementById(\"logTable\")\n" +
+            "          .getElementsByTagName(\"tr\");\n" +
+            "        for (var i = 1; i < rows.length; i++) {\n" +
+            "          var cells = rows[i].getElementsByTagName(\"td\");\n" +
+            "          var message = cells[1].textContent || cells[1].innerText;\n" +
+            "          rows[i].style.display = message.toLowerCase().includes(filterValue)\n" +
+            "            ? \"\"\n" +
+            "            : \"none\";\n" +
+            "        }\n" +
+            "      }\n" +
+            "      \n" +
+            "      let typingTimer; // Variable to hold the timer\n" +
+            "      let doneTypingInterval = 500; // Wait 500ms after typing finishes before triggering filterLogs()\n" +
+            "\n" +
+            "      // Function to check if \"Enter\" was pressed\n" +
+            "      function checkEnter(event) {\n" +
+            "        if (event.key === \"Enter\") {\n" +
+            "          filterLogs(); // Trigger the filtering immediately when Enter is pressed\n" +
+            "        }\n" +
+            "      }\n" +
+            "\n" +
+            "      // Function to trigger filterLogs after a delay (debouncing)\n" +
+            "      function delayedFilter() {\n" +
+            "        clearTimeout(typingTimer); // Clear the previous timer\n" +
+            "\n" +
+            "        // Set a new timer to trigger filterLogs after the specified delay\n" +
+            "        typingTimer = setTimeout(filterLogs, doneTypingInterval);\n" +
+            "      }\n" +
+            "\n" +
+            "      // Toggle auto-scroll on/off\n" +
+            "      function toggleAutoScroll() {\n" +
+            "        autoScrollEnabled = !autoScrollEnabled;\n" +
+            "        var button = document.getElementById(\"toggleScrollButton\");\n" +
+            "        if (autoScrollEnabled) {\n" +
+            "          button.innerText = \"Disable Auto-Scroll\";\n" +
+            "        } else {\n" +
+            "          button.innerText = \"Enable Auto-Scroll\";\n" +
+            "        }\n" +
+            "      }\n" +
+            "    </script>\n" +
+            "  </body>\n" +
+            "</html>\n" +
+            "";
+        private static string RoutingHTML = "<!DOCTYPE html>\n" +
+"<html lang=\"en\">\n" +
+"  <head>\n" +
+"    <meta charset=\"UTF-8\" />\n" +
+"    <meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\" />\n" +
+"    <title>Routing Configuration</title>\n" +
+"    <style>\n" +
+"      footer {\n" +
+"        display: flex;\n" +
+"        justify-content: center;\n" +
+"        position: fixed;\n" +
+"        bottom: -10px;\n" +
+"        left: 0px;\n" +
+"        right: 0px;\n" +
+"        margin-bottom: 0px;\n" +
+"        padding: 0px;\n" +
+"        color: #888888;\n" +
+"      }\n" +
+"      body {\n" +
+"        font-family: Arial, sans-serif;\n" +
+"        background-color: #121212;\n" +
+"        color: #e0e0e0;\n" +
+"        padding: 20px; /* Added padding for better layout */\n" +
+"      }\n" +
+"      .section {\n" +
+"        margin-bottom: 20px;\n" +
+"      }\n" +
+"      .list-container {\n" +
+"        display: flex;\n" +
+"        flex-direction: column;\n" +
+"        max-height: 300px;\n" +
+"        overflow-y: auto;\n" +
+"        border: 1px solid #ccc;\n" +
+"        padding: 10px;\n" +
+"        background-color: #2e2e2e;\n" +
+"      }\n" +
+"      .list-buttons {\n" +
+"        margin-top: 10px;\n" +
+"      }\n" +
+"      .list-item {\n" +
+"        display: flex;\n" +
+"        justify-content: space-between;\n" +
+"        margin-bottom: 5px;\n" +
+"      }\n" +
+"      textarea {\n" +
+"        width: 80%;\n" +
+"        resize: none;\n" +
+"        color: white;\n" +
+"        background-color: #464646;\n" +
+"      }\n" +
+"      select {\n" +
+"        width: 15%;\n" +
+"        color: white;\n" +
+"        background-color: #464646;\n" +
+"      }\n" +
+"      button {\n" +
+"        margin-right: 5px;\n" +
+"        background-color: #007bff;\n" +
+"        color: white;\n" +
+"        border: none;\n" +
+"        padding: 5px 10px;\n" +
+"        cursor: pointer;\n" +
+"      }\n" +
+"      button:hover {\n" +
+"        background-color: #0056b3;\n" +
+"      }\n" +
+"      .route {\n" +
+"        margin-bottom: 15px;\n" +
+"        background-color: #2e2e2e;\n" +
+"        padding: 10px;\n" +
+"        border-radius: 5px;\n" +
+"      }\n" +
+"      .output {\n" +
+"        display: flex;\n" +
+"        align-items: center;\n" +
+"        margin-bottom: 5px;\n" +
+"      }\n" +
+"      .output input {\n" +
+"        margin-right: 5px;\n" +
+"      }\n" +
+"      #routingContainer {\n" +
+"        margin-bottom: 20px;\n" +
+"      }\n" +
+"    </style>\n" +
+"  </head>\n" +
+"  <body>\n" +
+"    <button onclick=\"location.href='http://INSERTPUBLICIP/settings'\">← Go Back</button> \n" +
+"    <h2>Edit Routing Configuration</h2>\n" +
+"    <div id=\"routingContainer\" class=\"list-container\">\n" +
+"      <!-- Existing routing data will be populated here -->\n" +
+"    </div>\n" +
+"    <div class=\"list-buttons\">\n" +
+"      <button id=\"addRoute\">Add Route</button>\n" +
+"    </div>\n" +
+"    <br />\n" +
+"    <button id=\"saveRouting\">Save Routing</button>\n" +
+"    \n" +
+"    <footer>\n" +
+"        <p>Current OSC avatar ID : AVATARIDPLEASEBEHERE</p>\n" +
+"      </footer>\n" +
+"      \n" +
+"    <script>\n" +
+"      // Dynamically add routing rows\n" +
+"      function addRoute(inputPort = \"\", outputs = []) {\n" +
+"        const routeDiv = document.createElement(\"div\");\n" +
+"        routeDiv.classList.add(\"route\");\n" +
+"\n" +
+"        const inputPortInput = document.createElement(\"input\");\n" +
+"        inputPortInput.placeholder = \"Input Port\";\n" +
+"        inputPortInput.value = inputPort;\n" +
+"        routeDiv.appendChild(inputPortInput);\n" +
+"\n" +
+"        const outputsDiv = document.createElement(\"div\");\n" +
+"        outputsDiv.classList.add(\"outputs\");\n" +
+"\n" +
+"        // Add existing outputs\n" +
+"        outputs.forEach((output) =>\n" +
+"          addOutput(outputsDiv, output.ip, output.port)\n" +
+"        );\n" +
+"\n" +
+"        const addOutputButton = document.createElement(\"button\");\n" +
+"        addOutputButton.textContent = \"Add Output\";\n" +
+"        addOutputButton.addEventListener(\"click\", () => addOutput(outputsDiv));\n" +
+"        routeDiv.appendChild(addOutputButton);\n" +
+"\n" +
+"        routeDiv.appendChild(outputsDiv);\n" +
+"\n" +
+"        const removeRouteButton = document.createElement(\"button\");\n" +
+"        removeRouteButton.textContent = \"Remove Route\";\n" +
+"        removeRouteButton.addEventListener(\"click\", () => routeDiv.remove());\n" +
+"        routeDiv.appendChild(removeRouteButton);\n" +
+"\n" +
+"        document.getElementById(\"routingContainer\").appendChild(routeDiv);\n" +
+"      }\n" +
+"\n" +
+"      // Dynamically add output fields\n" +
+"      function addOutput(outputsDiv, ip = \"\", port = \"\") {\n" +
+"        const outputDiv = document.createElement(\"div\");\n" +
+"        outputDiv.classList.add(\"output\");\n" +
+"\n" +
+"        const ipInput = document.createElement(\"input\");\n" +
+"        ipInput.placeholder = \"IP Address\";\n" +
+"        ipInput.value = ip;\n" +
+"        outputDiv.appendChild(ipInput);\n" +
+"\n" +
+"        const portInput = document.createElement(\"input\");\n" +
+"        portInput.placeholder = \"Port\";\n" +
+"        portInput.value = port;\n" +
+"        outputDiv.appendChild(portInput);\n" +
+"\n" +
+"        const removeOutputButton = document.createElement(\"button\");\n" +
+"        removeOutputButton.textContent = \"Remove Output\";\n" +
+"        removeOutputButton.addEventListener(\"click\", () => outputDiv.remove());\n" +
+"        outputDiv.appendChild(removeOutputButton);\n" +
+"\n" +
+"        outputsDiv.appendChild(outputDiv);\n" +
+"      }\n" +
+"\n" +
+"      // Fetch the current routing configuration on page load\n" +
+"      fetch(\"/api/loadRouting\")\n" +
+"        .then((response) => response.json())\n" +
+"        .then((data) => {\n" +
+"          data.forEach((route) => addRoute(route.inputPort, route.outputs));\n" +
+"        });\n" +
+"\n" +
+"      // Save the routing configuration\n" +
+"      document.getElementById(\"saveRouting\").addEventListener(\"click\", () => {\n" +
+"        const routing = Array.from(\n" +
+"          document.getElementById(\"routingContainer\").children\n" +
+"        ).map((routeDiv) => {\n" +
+"          const inputPort = routeDiv.querySelector(\"input\").value;\n" +
+"          const outputs = Array.from(\n" +
+"            routeDiv.querySelector(\".outputs\").children\n" +
+"          ).map((outputDiv) => {\n" +
+"            return {\n" +
+"              ip: outputDiv.querySelector(\"input\").value,\n" +
+"              port: outputDiv.querySelectorAll(\"input\")[1].value,\n" +
+"            };\n" +
+"          });\n" +
+"          return { inputPort: inputPort, outputs: outputs };\n" +
+"        });\n" +
+"\n" +
+"        fetch(\"/api/saveRouting\", {\n" +
+"          method: \"POST\",\n" +
+"          headers: { \"Content-Type\": \"application/json\" },\n" +
+"          body: JSON.stringify(routing),\n" +
+"        }).then((response) => {\n" +
+"          if (response.ok) {\n" +
+"            alert(\"Routing saved!\");\n" +
+"          } else {\n" +
+"            alert(\"Error saving routing.\");\n" +
+"          }\n" +
+"        });\n" +
+"      });\n" +
+"\n" +
+"      document.getElementById(\"addRoute\").addEventListener(\"click\", () => {\n" +
+"        addRoute(); // Add an empty route for the user to fill in\n" +
+"      });\n" +
+"    </script>\n" +
+"  </body>\n" +
+"</html>\n" +
+"";
+        private static string indexHTML = "<html><head><meta charset=\"UTF-8\"><meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">\n" +
+"<style>\n" +
+"body { background-color: #121212; color: #e0e0e0; font-family: Arial, sans-serif; padding: 10px; }\n" +
+"h1 { text-align: center; font-size: 2em; }\n" +
+".toggle { position: relative; display: inline-block; width: 60px; height: 34px; margin-bottom: 10px; }\n" +
+".toggle input { opacity: 0; width: 0; height: 0; }\n" +
+".slider { position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0; background-color: #333; transition: .4s; border-radius: 34px; }\n" +
+".slider:before { position: absolute; content: ''; height: 26px; width: 26px; border-radius: 50%; background-color: #e0e0e0; transition: .4s; }\n" +
+"input:checked + .slider { background-color: #2196F3; }\n" +
+"input:checked + .slider:before { transform: translateX(26px); }\n" +
+".range-slider { width: 100%; background-color: #333; color: #e0e0e0; margin-bottom: 10px; }\n" +
+".value-display { font-weight: bold; margin-left: 10px; }\n" +
+"button { padding: 10px 15px; font-size: 1.2em; margin: 5px 0; background-color: #2196F3; color: white; border: none; cursor: pointer; width: 100%; }\n" +
+"button:disabled { background-color: #555; }\n" +
+".container { display: flex; flex-wrap: wrap; gap: 10px; justify-content: space-between; }\n" +
+".button-container { display: flex; flex-direction: column; align-items: center; width: 100%; max-width: 200px; margin: 10px auto; }\n" +
+".parameter-container { border: 1px solid #e0e0e0; padding: 10px; margin-bottom: 15px; border-radius: 8px; }\n" +
+".param-header { text-align: center; font-weight: bold; font-size: 1.2em; margin-bottom: 10px; }\n" +
+".increment-buttons { text-align: center; margin-top: 10px; }\n" +
+".button-row { display: flex; justify-content: center; gap: 5px; margin-bottom: 5px; }\n" +
+".bool-button { background-color: #333; color: #e0e0e0; border: none; padding: 15px; cursor: pointer; width: 100%; text-align: center; border-radius: 8px; font-size: 1.2em; }\n" +
+".bool-button.on { background-color: #2196F3; color: white; }\n" +
+".bool-button.off { background-color: #555; color: #e0e0e0; }\n" +
+"footer {\n" +
+"  display: flex;\n" +
+"  justify-content: center;\n" +
+"  position: fixed;\n" +
+"  bottom: -10px;\n" +
+"  left: 0px;\n" +
+"  right: 0px;\n" +
+"  margin-bottom: 0px;\n" +
+"  padding: 0px;\n" +
+"  color: #888888;\n" +
+"}\n" +
+"</style></head><body>\n" +
+"<h1>OSC Remote Control Panel</h1>\n" +
+"  <button onclick=\"location.href='http://PUBLICIPGOESHERE/settings'\">Setting page</button>\n" +
+"<div class=\"container\">\n" +
+"</div>\n" +
+"\n" +
+"<script>\n" +
+"  var ws = new WebSocket(`" + wsTXTReplace + "PUBLICIPGOESHERE/ws`);\n" +
+"\n" +
+"  ws.onopen = function() {\n" +
+"    console.log('WebSocket connection established.');\n" +
+"  };\n" +
+"\n" +
+"  ws.onclose = function() {\n" +
+"    console.log('WebSocket connection closed.');\n" +
+"  };\n" +
+"\n" +
+"  ws.onmessage = function(event) {\n" +
+"    var data = JSON.parse(event.data);\n" +
+"\n" +
+"    if (data.action === 'updateHtml') {\n" +
+"      // Update the entire HTML content\n" +
+"      document.open();\n" +
+"      document.write(decodeURIComponent(data.html));\n" +
+"      document.close();\n" +
+"    } else if (data.param) {\n" +
+"      var param = data.param;\n" +
+"      var value = data.value;\n" +
+"      var slider = document.getElementById(`slider-${param}`);\n" +
+"      var toggleButton = document.getElementById(`${param}`);\n" +
+"\n" +
+"      // Update slider values\n" +
+"      if (slider) {\n" +
+"        slider.value = value;\n" +
+"        updateValueDisplay(param, value);\n" +
+"      }\n" +
+"\n" +
+"      // Update toggle button states\n" +
+"      if (toggleButton) {\n" +
+"        var isOn = value === 't';\n" +
+"        toggleButton.classList.toggle('on', !isOn);\n" +
+"        toggleButton.classList.toggle('off', isOn);\n" +
+"        toggleBool(param, toggleButton)\n" +
+"      }\n" +
+"    }\n" +
+"  };\n" +
+"</script>\n" +
+"<footer>\n" +
+"  <p>Current OSC avatar ID : no avatar loaded</p>\n" +
+"</footer>\n" +
+"</body></html>\n" +
+"";
+        private static string avatarsettingsHTML = "<!DOCTYPE html>\n" +
+"<html lang=\"en\">\n" +
+"  <head>\n" +
+"    <meta charset=\"UTF-8\" />\n" +
+"    <meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\" />\n" +
+"    <title>Edit AvatarID Parameters</title>\n" +
+"    <style>\n" +
+"        \n" +
+"      footer {\n" +
+"        display: flex;\n" +
+"        justify-content: center;\n" +
+"        position: fixed;\n" +
+"        bottom: -10px;\n" +
+"        left: 0px;\n" +
+"        right: 0px;\n" +
+"        margin-bottom: 0px;\n" +
+"        padding: 0px;\n" +
+"        color: #888888;\n" +
+"      }\n" +
+"      body {\n" +
+"        font-family: Arial, sans-serif;\n" +
+"        background-color: #121212;\n" +
+"        color: #e0e0e0;\n" +
+"      }\n" +
+"      .section {\n" +
+"        margin-bottom: 20px;\n" +
+"      }\n" +
+"      .list-container {\n" +
+"        display: flex;\n" +
+"        flex-direction: column;\n" +
+"        max-height: 300px;\n" +
+"        overflow-y: auto;\n" +
+"        border: 1px solid #ccc;\n" +
+"        padding: 10px;\n" +
+"        background-color: #2e2e2e;\n" +
+"      }\n" +
+"      .list-buttons {\n" +
+"        margin-top: 10px;\n" +
+"      }\n" +
+"      .list-item {\n" +
+"        display: flex;\n" +
+"        justify-content: space-between;\n" +
+"        margin-bottom: 5px;\n" +
+"      }\n" +
+"      textarea {\n" +
+"        width: 80%;\n" +
+"        resize: none;\n" +
+"        color: white;\n" +
+"        background-color: #464646;\n" +
+"      }\n" +
+"      select {\n" +
+"        width: 15%;\n" +
+"        color: white;\n" +
+"        background-color: #464646;\n" +
+"      }\n" +
+"      button {\n" +
+"        margin-right: 5px;\n" +
+"        background-color: #007bff;\n" +
+"        color: white;\n" +
+"        border: none;\n" +
+"        padding: 5px 10px;\n" +
+"        cursor: pointer;\n" +
+"      }\n" +
+"      button:hover {\n" +
+"        background-color: #0056b3;\n" +
+"      }\n" +
+"    </style>\n" +
+"  </head>\n" +
+"  <body>\n" +
+"    <button onclick=\"location.href='http://INSERTPUBLICIP/settings'\">← Go Back</button> <h1>Edit Parameters for AvatarID: {{AVATARID}}</h1>\n" +
+"\n" +
+"    <div class=\"section\">\n" +
+"      <h2>Per-Avatar Parameter List</h2>\n" +
+"      <div class=\"list-container\" id=\"avatarParamList\">\n" +
+"        <!-- List of parameters for this AvatarID will go here -->\n" +
+"      </div>\n" +
+"      <div class=\"list-buttons\">\n" +
+"        <button id=\"addAvatarParam\">+</button>\n" +
+"        <button id=\"toggleBoolMode\">Switch Bool to Whitelist</button>\n" +
+"        <button id=\"toggleIntMode\">Switch Int to Whitelist</button>\n" +
+"        <button id=\"toggleFloatMode\">Switch Float to Whitelist</button>\n" +
+"      </div>\n" +
+"    </div>\n" +
+"\n" +
+"    <button id=\"saveAvatarSettings\">Save Settings</button>\n" +
+"    <button id=\"deletedAvatarSettings\">Delete Settings</button>\n" +
+"\n" +
+"    <footer>\n" +
+"        <p>Current OSC avatar ID : AVATARIDPLEASEBEHERE</p>\n" +
+"      </footer>\n" +
+"    <script>\n" +
+"      const avatarId = \"{{AVATARID}}\"; // AvatarID dynamically set from URL\n" +
+"      // Toggle between blacklist and whitelist for AvatarID\n" +
+"      let boolMode = \"Whitelist\";\n" +
+"      let intMode = \"Whitelist\";\n" +
+"      let floatMode = \"Whitelist\";\n" +
+"\n" +
+"      // Toggle Bool Mode\n" +
+"      document\n" +
+"        .getElementById(\"toggleBoolMode\")\n" +
+"        .addEventListener(\"click\", () => {\n" +
+"          const button = document.getElementById(\"toggleBoolMode\");\n" +
+"          boolMode = boolMode === \"Whitelist\" ? \"Blacklist\" : \"Whitelist\";\n" +
+"          button.textContent = `Switch Bool to ${boolMode}`;\n" +
+"        });\n" +
+"\n" +
+"      // Toggle Int Mode\n" +
+"      document.getElementById(\"toggleIntMode\").addEventListener(\"click\", () => {\n" +
+"        const button = document.getElementById(\"toggleIntMode\");\n" +
+"        intMode = intMode === \"Whitelist\" ? \"Blacklist\" : \"Whitelist\";\n" +
+"        button.textContent = `Switch Int to ${intMode}`;\n" +
+"      });\n" +
+"\n" +
+"      // Toggle Float Mode\n" +
+"      document\n" +
+"        .getElementById(\"toggleFloatMode\")\n" +
+"        .addEventListener(\"click\", () => {\n" +
+"          const button = document.getElementById(\"toggleFloatMode\");\n" +
+"          floatMode = floatMode === \"Whitelist\" ? \"Blacklist\" : \"Whitelist\";\n" +
+"          button.textContent = `Switch Float to ${floatMode}`;\n" +
+"        });\n" +
+"\n" +
+"      // Load settings for this AvatarID on page load\n" +
+"      fetch(`/api/loadAvatarSettings/${avatarId}`)\n" +
+"        .then((response) => response.json())\n" +
+"        .then((data) => {\n" +
+"          const list = document.getElementById(\"avatarParamList\");\n" +
+"          data.parameters.forEach((param) => {\n" +
+"            addParamToList(list, param.name, param.type);\n" +
+"          });\n" +
+"          // Set the toggle states based on loaded data\n" +
+"          if (data.boolMode) {\n" +
+"            boolMode = data.boolMode;\n" +
+"            document.getElementById(\n" +
+"              \"toggleBoolMode\"\n" +
+"            ).textContent = `Switch Bool to ${boolMode}`;\n" +
+"          }\n" +
+"          if (data.intMode) {\n" +
+"            intMode = data.intMode;\n" +
+"            document.getElementById(\n" +
+"              \"toggleIntMode\"\n" +
+"            ).textContent = `Switch Int to ${intMode}`;\n" +
+"          }\n" +
+"          if (data.floatMode) {\n" +
+"            floatMode = data.floatMode;\n" +
+"            document.getElementById(\n" +
+"              \"toggleFloatMode\"\n" +
+"            ).textContent = `Switch Float to ${floatMode}`;\n" +
+"          }\n" +
+"        });\n" +
+"\n" +
+"      // Functionality to add a new parameter\n" +
+"      document\n" +
+"        .getElementById(\"addAvatarParam\")\n" +
+"        .addEventListener(\"click\", () => {\n" +
+"          const list = document.getElementById(\"avatarParamList\");\n" +
+"          addParamToList(list, \"\", \"Bool\");\n" +
+"        });\n" +
+"      function addParamToList(list, paramName, paramType) {\n" +
+"        const listItem = document.createElement(\"div\");\n" +
+"        listItem.classList.add(\"list-item\");\n" +
+"\n" +
+"        // Textarea for parameter name\n" +
+"        const textarea = document.createElement(\"textarea\");\n" +
+"        textarea.placeholder = \"Enter Parameter Name...\";\n" +
+"        textarea.value = paramName;\n" +
+"        listItem.appendChild(textarea);\n" +
+"\n" +
+"        // Dropdown for parameter type\n" +
+"        const select = document.createElement(\"select\");\n" +
+"        const options = [\"Bool\", \"Float\", \"Int\"];\n" +
+"        options.forEach((opt) => {\n" +
+"          const optionElement = document.createElement(\"option\");\n" +
+"          optionElement.value = opt;\n" +
+"          optionElement.textContent = opt;\n" +
+"          if (opt === paramType) {\n" +
+"            optionElement.selected = true;\n" +
+"          }\n" +
+"          select.appendChild(optionElement);\n" +
+"        });\n" +
+"        listItem.appendChild(select);\n" +
+"\n" +
+"        // Remove button\n" +
+"        const removeButton = document.createElement(\"button\");\n" +
+"        removeButton.textContent = \"X   \";\n" +
+"        removeButton.addEventListener(\"click\", () => {\n" +
+"          list.removeChild(listItem); // Remove the parameter from the list\n" +
+"        });\n" +
+"        listItem.appendChild(removeButton);\n" +
+"\n" +
+"        // Append the complete list item to the list\n" +
+"        list.appendChild(listItem);\n" +
+"      }\n" +
+"\n" +
+"      // Save settings\n" +
+"      document\n" +
+"        .getElementById(\"saveAvatarSettings\")\n" +
+"        .addEventListener(\"click\", () => {\n" +
+"          const list = document.getElementById(\"avatarParamList\");\n" +
+"          const parameters = Array.from(list.children).map((item) => {\n" +
+"            return {\n" +
+"              name: item.querySelector(\"textarea\").value,\n" +
+"              type: item.querySelector(\"select\").value,\n" +
+"            };\n" +
+"          });\n" +
+"\n" +
+"          const data = {\n" +
+"            parameters,\n" +
+"            boolMode, // Add current Bool mode\n" +
+"            intMode, // Add current Int mode\n" +
+"            floatMode, // Add current Float mode\n" +
+"          };\n" +
+"\n" +
+"          fetch(`/api/saveAvatarSettings/${avatarId}`, {\n" +
+"            method: \"POST\",\n" +
+"            headers: { \"Content-Type\": \"application/json\" },\n" +
+"            body: JSON.stringify(data),\n" +
+"          }).then((response) => {\n" +
+"            if (response.ok) {\n" +
+"              alert(\"Settings saved!\");\n" +
+"            } else {\n" +
+"              alert(\"Error saving settings.\");\n" +
+"            }\n" +
+"          });\n" +
+"        });\n" +
+"\n" +
+"      document\n" +
+"        .getElementById(\"deletedAvatarSettings\")\n" +
+"        .addEventListener(\"click\", () => {\n" +
+"          fetch(`/api/delete/${avatarId}`, {\n" +
+"            method: \"POST\",\n" +
+"          })\n" +
+"            .then((response) => {\n" +
+"              if (response.ok) {\n" +
+"                // Check if the response status is OK\n" +
+"                window.location.href = \"/settings\"; // Redirect to Settings.html\n" +
+"              } else {\n" +
+"                alert(\"Error deleting AvatarID.\");\n" +
+"              }\n" +
+"            })\n" +
+"            .catch((error) => {\n" +
+"              console.error(\"Fetch error:\", error);\n" +
+"              alert(\"An error occurred while trying to delete the AvatarID.\");\n" +
+"            });\n" +
+"        });\n" +
+"    </script>\n" +
+"  </body>\n" +
+"</html>\n" +
+"";
+        private static string SettingsHTML = "<!DOCTYPE html>\n" +
+"<html lang=\"en\">\n" +
+"  <head>\n" +
+"    <meta charset=\"UTF-8\" />\n" +
+"    <meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\" />\n" +
+"    <title>Settings</title>\n" +
+"    <style>\n" +
+"      footer {\n" +
+"        display: flex;\n" +
+"        justify-content: center;\n" +
+"        position: fixed;\n" +
+"        bottom: -10px;\n" +
+"        left: 0px;\n" +
+"        right: 0px;\n" +
+"        margin-bottom: 0px;\n" +
+"        padding: 0px;\n" +
+"        color: #888888;\n" +
+"      }\n" +
+"      body {\n" +
+"        font-family: Arial, sans-serif;\n" +
+"        background-color: #121212;\n" +
+"        color: #e0e0e0;\n" +
+"      }\n" +
+"      .section {\n" +
+"        margin-bottom: 20px;\n" +
+"      }\n" +
+"      .list-container {\n" +
+"        display: flex;\n" +
+"        flex-direction: column;\n" +
+"        max-height: 300px;\n" +
+"        overflow-y: auto;\n" +
+"        border: 1px solid #ccc;\n" +
+"        padding: 10px;\n" +
+"        background-color: #2e2e2e;\n" +
+"      }\n" +
+"      .list-buttons {\n" +
+"        margin-top: 10px;\n" +
+"      }\n" +
+"      .list-item {\n" +
+"        display: flex;\n" +
+"        justify-content: space-between;\n" +
+"        margin-bottom: 5px;\n" +
+"      }\n" +
+"      textarea {\n" +
+"        width: 80%;\n" +
+"        resize: none;\n" +
+"        color: white;\n" +
+"        background-color: #464646;\n" +
+"      }\n" +
+"      select {\n" +
+"        width: 15%;\n" +
+"        color: white;\n" +
+"        background-color: #464646;\n" +
+"      }\n" +
+"      button {\n" +
+"        margin-right: 5px;\n" +
+"        background-color: #007bff;\n" +
+"        color: white;\n" +
+"        border: none;\n" +
+"        padding: 5px 10px;\n" +
+"        cursor: pointer;\n" +
+"      }\n" +
+"      button:hover {\n" +
+"        background-color: #0056b3;\n" +
+"      }\n" +
+"    </style>\n" +
+"  </head>\n" +
+"  <body>\n" +
+"    <button onclick=\"location.href='http://INSERTPUBLICIP/'\">← Go Back</button>\n" +
+"    <button onclick=\"location.href='http://INSERTPUBLICIP/settings/routing'\">→ Routing Panel</button>\n" +
+"    <h1>Settings</h1>\n" +
+"\n" +
+"    <!-- AvatarID Blacklist/Whitelist -->\n" +
+"    <div class=\"section\">\n" +
+"      <h2>AvatarID List</h2>\n" +
+"      <div class=\"list-container\" id=\"avatarIdList\">\n" +
+"        <!-- List of Avatar IDs will go here -->\n" +
+"      </div>\n" +
+"      <div class=\"list-buttons\">\n" +
+"        <button id=\"addAvatarId\">+</button>\n" +
+"        <button id=\"toggleAvatarMode\">Switch to Whitelist</button>\n" +
+"      </div>\n" +
+"    </div>\n" +
+"\n" +
+"    <button id=\"saveIDSettings\">Save AvatarID Settings</button>\n" +
+"\n" +
+"    <!-- Global Parameter List -->\n" +
+"    <div class=\"section\">\n" +
+"      <h2>Global Parameter List</h2>\n" +
+"      <div class=\"list-container\" id=\"avatarParamList\">\n" +
+"        <!-- Global Parameter List will go here -->\n" +
+"      </div>\n" +
+"      <div class=\"list-buttons\">\n" +
+"        <button id=\"addAvatarParam\">+</button>\n" +
+"        <button id=\"toggleBoolMode\">Switch Bool to Whitelist</button>\n" +
+"        <button id=\"toggleIntMode\">Switch Int to Whitelist</button>\n" +
+"        <button id=\"toggleFloatMode\">Switch Float to Whitelist</button>\n" +
+"      </div>\n" +
+"    </div>\n" +
+"\n" +
+"    <button id=\"saveAvatarSettings\">Save Global Parameter Settings</button>\n" +
+"\n" +
+"    <!-- Other Pages Listing -->\n" +
+"    <div class=\"section\">\n" +
+"      <h2>Avatar File Listing</h2>\n" +
+"      <div class=\"list-container\" id=\"avatarParamList\">\n" +
+"        <!-- List of parameters for this AvatarID will go here -->\n" +
+"      </div>\n" +
+"    </div>\n" +
+"\n" +
+"    <footer>\n" +
+"      <p>Current OSC avatar ID : AVATARIDPLEASEBEHERE</p>\n" +
+"    </footer>\n" +
+"    <script>\n" +
+"      // Functionality to handle adding and removing items for AvatarID\n" +
+"      document.getElementById(\"addAvatarId\").addEventListener(\"click\", () => {\n" +
+"        const list = document.getElementById(\"avatarIdList\");\n" +
+"        const listItem = document.createElement(\"div\");\n" +
+"        listItem.classList.add(\"list-item\");\n" +
+"\n" +
+"        const textarea = document.createElement(\"textarea\");\n" +
+"        textarea.placeholder = \"Enter AvatarID...\";\n" +
+"        listItem.appendChild(textarea);\n" +
+"\n" +
+"        const openParamsButton = document.createElement(\"button\");\n" +
+"        openParamsButton.textContent = \"Edit Params\";\n" +
+"        openParamsButton.addEventListener(\"click\", () => {\n" +
+"          const avatarId = textarea.value; // Use the typed AvatarID from the textarea\n" +
+"          if (avatarId) {\n" +
+"            window.location.href = `/settings/${avatarId}`; // Navigate to /settings/AVATARID\n" +
+"          } else {\n" +
+"            alert(\"Please enter a valid AvatarID.\");\n" +
+"          }\n" +
+"        });\n" +
+"        listItem.appendChild(openParamsButton);\n" +
+"\n" +
+"        // Add remove button for each AvatarID\n" +
+"        const removeButton = document.createElement(\"button\");\n" +
+"        removeButton.textContent = \"-\";\n" +
+"        removeButton.addEventListener(\"click\", () => {\n" +
+"          list.removeChild(listItem); // Remove the AvatarID from the list\n" +
+"        });\n" +
+"        listItem.appendChild(removeButton);\n" +
+"\n" +
+"        list.appendChild(listItem);\n" +
+"      });\n" +
+"\n" +
+"      let isWhiteList = true; // Initialize as true, assuming it starts in whitelist mode\n" +
+"      function addAvatarIdToList(list, avatarId) {\n" +
+"        const listItem = document.createElement(\"div\");\n" +
+"        listItem.classList.add(\"list-item\");\n" +
+"\n" +
+"        const textarea = document.createElement(\"textarea\");\n" +
+"        textarea.placeholder = \"Enter AvatarID...\";\n" +
+"        textarea.value = avatarId; // Set the value to the existing AvatarID\n" +
+"        listItem.appendChild(textarea);\n" +
+"\n" +
+"        const openParamsButton = document.createElement(\"button\");\n" +
+"        openParamsButton.textContent = \"Edit Params\";\n" +
+"        openParamsButton.addEventListener(\"click\", () => {\n" +
+"          const avatarId = textarea.value; // Use the typed AvatarID from the textarea\n" +
+"          if (avatarId) {\n" +
+"            window.location.href = `/settings/${avatarId}`; // Navigate to /settings/AVATARID\n" +
+"          } else {\n" +
+"            alert(\"Please enter a valid AvatarID.\");\n" +
+"          }\n" +
+"        });\n" +
+"        listItem.appendChild(openParamsButton);\n" +
+"\n" +
+"        // Add remove button for each AvatarID\n" +
+"        const removeButton = document.createElement(\"button\");\n" +
+"        removeButton.textContent = \"-\";\n" +
+"        removeButton.addEventListener(\"click\", () => {\n" +
+"          list.removeChild(listItem); // Remove the AvatarID from the list\n" +
+"        });\n" +
+"        listItem.appendChild(removeButton);\n" +
+"\n" +
+"        list.appendChild(listItem);\n" +
+"      }\n" +
+"\n" +
+"      // Toggle between blacklist and whitelist for AvatarID\n" +
+"      document\n" +
+"        .getElementById(\"toggleAvatarMode\")\n" +
+"        .addEventListener(\"click\", () => {\n" +
+"          const button = document.getElementById(\"toggleAvatarMode\");\n" +
+"          isWhiteList = !isWhiteList; // Toggle the boolean value\n" +
+"          button.textContent = isWhiteList\n" +
+"            ? \"Switch to Blacklist\"\n" +
+"            : \"Switch to Whitelist\";\n" +
+"        });\n" +
+"\n" +
+"      // Load AvatarID List on page load\n" +
+"      fetch(\"/api/loadAvatarListing\")\n" +
+"        .then((response) => response.json())\n" +
+"        .then((data) => {\n" +
+"          const list = document.getElementById(\"avatarIdList\");\n" +
+"          data.avatarIds.forEach((avatarId) => {\n" +
+"            addAvatarIdToList(list, avatarId);\n" +
+"          });\n" +
+"          isWhiteList = data.IsWhiteList || true; // Set the initial state from loaded data\n" +
+"          document.getElementById(\"toggleAvatarMode\").textContent = isWhiteList\n" +
+"            ? \"Switch to Blacklist\"\n" +
+"            : \"Switch to Whitelist\"; // Update button text\n" +
+"        });\n" +
+"\n" +
+"      document\n" +
+"        .getElementById(\"saveIDSettings\")\n" +
+"        .addEventListener(\"click\", () => {\n" +
+"          const list = document.getElementById(\"avatarIdList\");\n" +
+"          const avatarIds = Array.from(list.children).map((item) => {\n" +
+"            return item.querySelector(\"textarea\").value;\n" +
+"          });\n" +
+"\n" +
+"          const data = {\n" +
+"            avatarIds,\n" +
+"            IsWhiteList: isWhiteList, // Include the boolean value\n" +
+"          };\n" +
+"\n" +
+"          fetch(\"/api/saveAvatarListing\", {\n" +
+"            method: \"POST\",\n" +
+"            headers: { \"Content-Type\": \"application/json\" },\n" +
+"            body: JSON.stringify(data),\n" +
+"          }).then((response) => {\n" +
+"            if (response.ok) {\n" +
+"              alert(\"AvatarID list saved!\");\n" +
+"            } else {\n" +
+"              alert(\"Error saving AvatarID list.\");\n" +
+"            }\n" +
+"          });\n" +
+"        });\n" +
+"\n" +
+"      let boolMode = \"Whitelist\";\n" +
+"      let intMode = \"Whitelist\";\n" +
+"      let floatMode = \"Whitelist\";\n" +
+"\n" +
+"      // Toggle Bool Mode\n" +
+"      document\n" +
+"        .getElementById(\"toggleBoolMode\")\n" +
+"        .addEventListener(\"click\", () => {\n" +
+"          const button = document.getElementById(\"toggleBoolMode\");\n" +
+"          boolMode = boolMode === \"Whitelist\" ? \"Blacklist\" : \"Whitelist\";\n" +
+"          button.textContent = `Switch Bool to ${boolMode}`;\n" +
+"        });\n" +
+"\n" +
+"      // Toggle Int Mode\n" +
+"      document.getElementById(\"toggleIntMode\").addEventListener(\"click\", () => {\n" +
+"        const button = document.getElementById(\"toggleIntMode\");\n" +
+"        intMode = intMode === \"Whitelist\" ? \"Blacklist\" : \"Whitelist\";\n" +
+"        button.textContent = `Switch Int to ${intMode}`;\n" +
+"      });\n" +
+"\n" +
+"      // Toggle Float Mode\n" +
+"      document\n" +
+"        .getElementById(\"toggleFloatMode\")\n" +
+"        .addEventListener(\"click\", () => {\n" +
+"          const button = document.getElementById(\"toggleFloatMode\");\n" +
+"          floatMode = floatMode === \"Whitelist\" ? \"Blacklist\" : \"Whitelist\";\n" +
+"          button.textContent = `Switch Float to ${floatMode}`;\n" +
+"        });\n" +
+"\n" +
+"      // Load settings for this AvatarID on page load\n" +
+"      fetch(`/api/loadAvatarSettings/Global`)\n" +
+"        .then((response) => response.json())\n" +
+"        .then((data) => {\n" +
+"          const list = document.getElementById(\"avatarParamList\");\n" +
+"          data.parameters.forEach((param) => {\n" +
+"            addParamToList(list, param.name, param.type);\n" +
+"          });\n" +
+"          // Set the toggle states based on loaded data\n" +
+"          if (data.boolMode) {\n" +
+"            boolMode = data.boolMode;\n" +
+"            document.getElementById(\n" +
+"              \"toggleBoolMode\"\n" +
+"            ).textContent = `Switch Bool to ${boolMode}`;\n" +
+"          }\n" +
+"          if (data.intMode) {\n" +
+"            intMode = data.intMode;\n" +
+"            document.getElementById(\n" +
+"              \"toggleIntMode\"\n" +
+"            ).textContent = `Switch Int to ${intMode}`;\n" +
+"          }\n" +
+"          if (data.floatMode) {\n" +
+"            floatMode = data.floatMode;\n" +
+"            document.getElementById(\n" +
+"              \"toggleFloatMode\"\n" +
+"            ).textContent = `Switch Float to ${floatMode}`;\n" +
+"          }\n" +
+"        });\n" +
+"\n" +
+"      // Functionality to add a new parameter\n" +
+"      document\n" +
+"        .getElementById(\"addAvatarParam\")\n" +
+"        .addEventListener(\"click\", () => {\n" +
+"          const list = document.getElementById(\"avatarParamList\");\n" +
+"          addParamToList(list, \"\", \"Bool\");\n" +
+"        });\n" +
+"      function addParamToList(list, paramName, paramType) {\n" +
+"        const listItem = document.createElement(\"div\");\n" +
+"        listItem.classList.add(\"list-item\");\n" +
+"\n" +
+"        // Textarea for parameter name\n" +
+"        const textarea = document.createElement(\"textarea\");\n" +
+"        textarea.placeholder = \"Enter Parameter Name...\";\n" +
+"        textarea.value = paramName;\n" +
+"        listItem.appendChild(textarea);\n" +
+"\n" +
+"        // Dropdown for parameter type\n" +
+"        const select = document.createElement(\"select\");\n" +
+"        const options = [\"Bool\", \"Float\", \"Int\"];\n" +
+"        options.forEach((opt) => {\n" +
+"          const optionElement = document.createElement(\"option\");\n" +
+"          optionElement.value = opt;\n" +
+"          optionElement.textContent = opt;\n" +
+"          if (opt === paramType) {\n" +
+"            optionElement.selected = true;\n" +
+"          }\n" +
+"          select.appendChild(optionElement);\n" +
+"        });\n" +
+"        listItem.appendChild(select);\n" +
+"\n" +
+"        // Remove button\n" +
+"        const removeButton = document.createElement(\"button\");\n" +
+"        removeButton.textContent = \"X   \";\n" +
+"        removeButton.addEventListener(\"click\", () => {\n" +
+"          list.removeChild(listItem); // Remove the parameter from the list\n" +
+"        });\n" +
+"        listItem.appendChild(removeButton);\n" +
+"\n" +
+"        // Append the complete list item to the list\n" +
+"        list.appendChild(listItem);\n" +
+"      }\n" +
+"\n" +
+"      // Save settings\n" +
+"      document\n" +
+"        .getElementById(\"saveAvatarSettings\")\n" +
+"        .addEventListener(\"click\", () => {\n" +
+"          const list = document.getElementById(\"avatarParamList\");\n" +
+"          const parameters = Array.from(list.children).map((item) => {\n" +
+"            return {\n" +
+"              name: item.querySelector(\"textarea\").value,\n" +
+"              type: item.querySelector(\"select\").value,\n" +
+"            };\n" +
+"          });\n" +
+"\n" +
+"          const data = {\n" +
+"            parameters,\n" +
+"            boolMode, // Add current Bool mode\n" +
+"            intMode, // Add current Int mode\n" +
+"            floatMode, // Add current Float mode\n" +
+"          };\n" +
+"\n" +
+"          fetch(`/api/saveAvatarSettings/Global`, {\n" +
+"            method: \"POST\",\n" +
+"            headers: { \"Content-Type\": \"application/json\" },\n" +
+"            body: JSON.stringify(data),\n" +
+"          }).then((response) => {\n" +
+"            if (response.ok) {\n" +
+"              alert(\"Settings saved!\");\n" +
+"            } else {\n" +
+"              alert(\"Error saving settings.\");\n" +
+"            }\n" +
+"          });\n" +
+"        });\n" +
+"    </script>\n" +
+"  </body>\n" +
+"</html>\n" +
+"";
         private static int webPort = 80;
         private static int oscPortOut = 9002;
         private static int oscPortIn = 9003;
+        private static int saveCount = 5;
         private static string CurrentID = "";
         private static IWebHost webHost;
         private static string PUBIP = "localhost";
+        private static string DNS = "";
+        private static string httpsTXTReplace = "http://";
+        private static string wsTXTReplace = "ws://";
+        private static bool UseHTTPS = false;
+        private static Timer timer;
+        private static bool logger;
+
+
+        // Method to generate a PFX file from a certificate and private key
+        public static void GeneratePfx(string certFilePath, string keyFilePath, string pfxFilePath, string password)
+        {
+            try
+            {
+                // Load the certificate (public key)
+                var cert = new X509Certificate2(certFilePath);
+
+                // Read the private key from the file
+                string privateKeyText = File.ReadAllText(keyFilePath);
+
+                // Load the private key as RSA (assuming RSA, adjust if your key is different)
+                using (RSA rsa = RSA.Create())
+                {
+                    rsa.ImportFromPem(privateKeyText.ToCharArray());
+
+                    // Create a certificate collection and assign the private key
+                    var pfx = new X509Certificate2Collection(cert);
+                    pfx[0] = pfx[0].CopyWithPrivateKey(rsa);
+
+                    // Export the PFX file
+                    File.WriteAllBytes(pfxFilePath, pfx.Export(X509ContentType.Pfx, password));
+
+                    Console.WriteLine($"PFX file created: {pfxFilePath}");
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Error generating PFX file: {ex.Message}");
+            }
+        }
+
         static async Task Main(string[] args)
         {
+            ParseArguments(args);
+            Console.WriteLine(UseHTTPS);
+            Console.WriteLine(httpsTXTReplace);
+            Console.WriteLine(args);
+            if (UseHTTPS)
+            {
+
+                // Step 1: Generate the .pfx file
+                string certFilePath = "./cert/certificate.crt"; // Path to your certificate
+                string keyFilePath = "./cert/private.key"; // Path to your private key
+                string pfxFilePath = "./cert/certificate.pfx"; // Path where you want to save the .pfx file
+                string password = "your_password"; // Password for the .pfx file
+
+                GeneratePfx(certFilePath, keyFilePath, pfxFilePath, password);
+
+            }
             try
             {
                 using (HttpClient client = new HttpClient())
                 {
                     // Make a GET request to the API service to get the public IP address
                     PUBIP = await client.GetStringAsync("https://api.ipify.org");
-                    Console.WriteLine($"Your public IP address is: {PUBIP}");
                 }
             }
             catch (Exception ex)
@@ -38,8 +1315,12 @@ namespace OscWebServer
                 PUBIP = "localhost";
                 Console.WriteLine($"An error occurred: {ex.Message}");
             }
+            string ip = "DNS";
+            if (DNS == "") { DNS = PUBIP; ip = "IP"; }
+            string we = "";
+            if ((webPort != 80 && !UseHTTPS) && (webPort != 443 && UseHTTPS)) we = ":" + webPort;
 
-            ParseArguments(args);
+            if (PUBIP != "localhost") Console.WriteLine($"Your public {ip} address is: {DNS}{we}");
             StartOscListener();
             StartOscSender();
             Router("parameters/Routing.json");
@@ -129,39 +1410,365 @@ namespace OscWebServer
         }
         private static void ParseArguments(string[] args)
         {
+            string lastArg = "";
             foreach (var arg in args)
             {
-                var parts = arg.Split(' ');
-                if (parts.Length == 2)
+                if (lastArg.Contains("-"))
                 {
-                    switch (parts[0])
+                    switch (lastArg)
                     {
                         case "-WebPort":
-                            webPort = int.Parse(parts[1]);
+                            webPort = int.Parse(arg);
                             break;
                         case "-OSCPortOUT":
-                            oscPortOut = int.Parse(parts[1]);
+                            oscPortOut = int.Parse(arg);
                             break;
                         case "-OSCPortIN":
-                            oscPortIn = int.Parse(parts[1]);
+                            oscPortIn = int.Parse(arg);
+                            break;
+                        case "-DNS":
+                            DNS = arg;
+                            break;
+                        case "-slot":
+                            saveCount = int.Parse(arg);
+                            break;
+                        case "-logger":
+                            logger = bool.Parse(arg);
+                            break;
+                        case "-usehttps":
+                            UseHTTPS = true;
+                            httpsTXTReplace = "https://";
+                            wsTXTReplace = "wss://";
                             break;
                     }
                 }
+                lastArg = arg;
             }
+        }
+
+
+        private static void AppendLogger(IEndpointRouteBuilder app)
+        {
+            LogProcessor.Start();
+            var solarizedDarkCss = @"
+    body {
+        background-color: #002b36; color: #839496; font-family: Consolas, monospace; margin: 20px;
+    }
+    a { color: #268bd2; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+    input, button {
+        background: #073642; border: 1px solid #586e75; color: #839496; padding: 6px 8px; font-size: 1em;
+    }
+    .log-entry {
+        background: #073642; padding: 10px; border-radius: 4px; margin-bottom: 1em;
+        font-size: 0.9em; overflow-x: auto;
+    }
+    .header {
+        font-weight: bold; font-size: 1.2em; margin-bottom: 1em;
+    }
+    .search-bar {
+        margin-bottom: 1em;
+    }
+";
+
+            app.MapGet("/logger", async (HttpContext context) =>
+            {
+
+                var indexJsonPath = Path.Combine("./logdata", "index.json");
+                var logIndex = File.Exists(indexJsonPath)
+                    ? System.Text.Json.JsonSerializer.Deserialize<Dictionary<string, LogIndexEntry>>(await File.ReadAllTextAsync(indexJsonPath)) ?? new()
+                    : new();
+
+                var grouped = logIndex.Values
+                    .GroupBy(entry => entry.Category)
+                    .Select(g => new { Category = g.Key, Count = g.Sum(e => e.Count) })
+                    .OrderByDescending(g => g.Count);
+
+                var sb = new StringBuilder();
+                sb.AppendLine("<!DOCTYPE html><html><head><meta charset='UTF-8'><title>Categories</title>");
+                sb.AppendLine($"<style>{solarizedDarkCss}</style></head><body>");
+                sb.AppendLine("<div class='header'>Log Categories</div>");
+                sb.AppendLine("<input type='text' id='searchBox' placeholder='Search categories...' onkeyup='filterList()' style='width:100%; padding:8px;'>");
+                sb.AppendLine("<ul id='categoryList'>");
+
+                foreach (var g in grouped)
+                {
+                    var cat = System.Net.WebUtility.UrlEncode(g.Category);
+                    sb.AppendLine($"<li><a href='/logs/{cat}'>[{g.Count}] - {System.Net.WebUtility.HtmlEncode(g.Category)}</a></li>");
+                }
+
+                sb.AppendLine("</ul>");
+                sb.AppendLine("<script>");
+                sb.AppendLine(@"
+    function filterList() {
+        var input = document.getElementById('searchBox');
+        var filter = input.value.toLowerCase();
+        var items = document.getElementById('categoryList').getElementsByTagName('li');
+        for (var i = 0; i < items.length; i++) {
+            var txt = items[i].textContent || items[i].innerText;
+            items[i].style.display = txt.toLowerCase().includes(filter) ? '' : 'none';
+        }
+    }");
+                sb.AppendLine("</script>");
+                sb.AppendLine("</body></html>");
+
+                context.Response.ContentType = "text/html; charset=utf-8";
+                await context.Response.WriteAsync(sb.ToString());
+            });
+            app.MapGet("/logs/{category}", async (HttpContext context, string category) =>
+            {
+                var indexJsonPath = Path.Combine("./logdata", "index.json");
+                var logIndex = File.Exists(indexJsonPath)
+                    ? System.Text.Json.JsonSerializer.Deserialize<Dictionary<string, LogIndexEntry>>(await File.ReadAllTextAsync(indexJsonPath)) ?? new()
+                    : new();
+
+                var decodedCategory = System.Net.WebUtility.UrlDecode(category);
+                var entries = logIndex.Values
+                    .Where(e => e.Category.Equals(decodedCategory, StringComparison.OrdinalIgnoreCase))
+                    .OrderByDescending(e => e.Count)
+                    .ToList();
+
+                if (!entries.Any())
+                {
+                    context.Response.StatusCode = 404;
+                    await context.Response.WriteAsync("No logs found for this category.");
+                    return;
+                }
+
+                string CleanTemplate(string template)
+                {
+                    var cleaned = Regex.Replace(template, @"\d{4}\.\d{2}\.\d{2} \d{2}:\d{2}:\d{2}", "");
+                    cleaned = Regex.Replace(cleaned, @"(Debug|Info|Error)?\s*-\s*\[.*?\]", "", RegexOptions.IgnoreCase);
+                    cleaned = Regex.Replace(cleaned, @"\{\{.*?\}\}", match =>
+                    {
+                        var ids = Regex.Matches(match.Value, @"avst_[a-z0-9\-]+", RegexOptions.IgnoreCase).Select(m => m.Value);
+                        return $"{{{{{string.Join(", ", ids)}}}}}";
+                    });
+                    return cleaned.Trim();
+                }
+
+                var sb = new StringBuilder();
+                sb.AppendLine("<!DOCTYPE html><html><head><meta charset='UTF-8'><title>Category Logs</title>");
+                sb.AppendLine($"<style>{solarizedDarkCss}</style></head><body>");
+                sb.AppendLine($"<a href='/logger'>← Back to Categories</a>");
+                sb.AppendLine($"<h2>Logs in Category: {System.Net.WebUtility.HtmlEncode(decodedCategory)}</h2>");
+                sb.AppendLine("<input type='text' id='searchBox' placeholder='Search logs...' onkeyup='filterList()' style='width:100%; padding:8px;'>");
+                sb.AppendLine("<ul id='logList'>");
+
+                foreach (var entry in entries)
+                {
+                    var shortTemplate = CleanTemplate(entry.Template);
+                    var lastSeen = entry.LastSeen.ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss");
+                    var urlen = System.Net.WebUtility.UrlEncode(entry.File.Split("\\")[1].Replace(".txt", ""));
+                    var cleanHighlight = System.Net.WebUtility.UrlEncode(shortTemplate);
+
+                    sb.AppendLine("<li>");
+                    sb.AppendLine($"<a href='/log/{category}/{urlen}'>{System.Net.WebUtility.HtmlEncode(shortTemplate)}</a> ");
+                    sb.AppendLine($"<a href='/log/{category}/{urlen}?highlight={System.Net.WebUtility.UrlEncode(shortTemplate)}' style='color: #2aa198;'>(Context)</a> ");
+                    sb.AppendLine($"<span class='info'>(Count: {entry.Count}, Last Seen: {lastSeen})</span>");
+                    sb.AppendLine("</li>");
+                }
+
+                sb.AppendLine("</ul>");
+                sb.AppendLine("<script>");
+                sb.AppendLine(@"
+        function filterList() {
+            var input = document.getElementById('searchBox');
+            var filter = input.value.toLowerCase();
+            var items = document.getElementById('logList').getElementsByTagName('li');
+            for (var i = 0; i < items.length; i++) {
+                var txt = items[i].textContent || items[i].innerText;
+                items[i].style.display = txt.toLowerCase().includes(filter) ? '' : 'none';
+            }
+        }");
+                sb.AppendLine("</script>");
+                sb.AppendLine("</body></html>");
+
+                context.Response.ContentType = "text/html; charset=utf-8";
+                await context.Response.WriteAsync(sb.ToString());
+            });
+            app.MapGet("/log/{category}/{id}", async (HttpContext context, string category, string id) =>
+            {
+                var indexJsonPath = Path.Combine("./logdata", "index.json");
+
+                Dictionary<string, LogIndexEntry> logIndex = new();
+                if (File.Exists(indexJsonPath))
+                {
+                    var json = await File.ReadAllTextAsync(indexJsonPath);
+                    logIndex = System.Text.Json.JsonSerializer.Deserialize<Dictionary<string, LogIndexEntry>>(json) ?? new();
+                }
+
+                var safeId = System.Net.WebUtility.UrlDecode(id);
+
+                if (!logIndex.TryGetValue(safeId, out var entry))
+                {
+                    context.Response.StatusCode = 404;
+                    await context.Response.WriteAsync("Log index entry not found.");
+                    return;
+                }
+
+                var logFilePath = Path.Combine("./logdata", entry.File);
+                if (!File.Exists(logFilePath))
+                {
+                    context.Response.StatusCode = 404;
+                    await context.Response.WriteAsync("Log file not found.");
+                    return;
+                }
+
+                var highlight = context.Request.Query["highlight"].ToString();
+                var lines = await File.ReadAllLinesAsync(logFilePath);
+                var sbLog = new StringBuilder();
+
+                for (int i = 0; i < lines.Length; i++)
+                {
+                    var line = lines[i];
+                    var encoded = System.Net.WebUtility.HtmlEncode(line);
+
+                    encoded = Regex.Replace(encoded, @"https:\/\/api\.vrchat\.cloud\/api\/[^\s""']+", match =>
+                    {
+                        var original = match.Value;
+                        var friendly = original.Replace("https://api.vrchat.cloud", "https://vrchat.com");
+                        return $"<a href='{friendly}' target='_blank'>{original}</a>";
+                    });
+                    var contextLink = "";
+                    var match = Regex.Match(line, @"\[context:(.+?):(\d+)\]");
+                    if (match.Success)
+                    {
+                        string file = match.Groups[1].Value;
+                        int lineNum = int.Parse(match.Groups[2].Value);
+                        string fileEncoded = WebUtility.UrlEncode(file);
+                        contextLink = $"<a href='/context?file={fileEncoded}&line={lineNum}' style='margin-right:8px; color:#268bd2; text-decoration:none;'>(Context)</a>";
+                    }
+
+                    if (!string.IsNullOrWhiteSpace(highlight) && line.Contains(highlight, StringComparison.OrdinalIgnoreCase))
+                    {
+                        sbLog.AppendLine($"<div id='highlight' style='background-color:#073642;color:#eee;padding:4px;border-left:4px solid orange;'>{contextLink}{encoded}</div>");
+                    }
+                    else
+                    {
+                        sbLog.AppendLine($"<div style='padding:4px;'>{contextLink}{encoded}</div>");
+                    }
+                }
+
+
+                var sb = new StringBuilder();
+                sb.AppendLine("<!DOCTYPE html><html><head><meta charset='UTF-8'><title>Log Detail</title>");
+                sb.AppendLine($"<style>{solarizedDarkCss}</style>");
+                sb.AppendLine("</head><body>");
+                sb.AppendLine($"<a href='/logs/{category}'>← Back to Index</a>");
+                sb.AppendLine($"<div class='log-header'><strong>Category:</strong> {System.Net.WebUtility.HtmlEncode(entry.Category)}</div>");
+                sb.AppendLine("<input type='text' id='searchBox' placeholder='Search log content...' onkeyup='filterPre()' style='width:100%; padding:8px;'>");
+                sb.AppendLine("<div class='log-entry' id='logContent' style='font-family: monospace;'>");
+                sb.AppendLine(sbLog.ToString());
+                sb.AppendLine("</div>");
+                sb.AppendLine(@"
+<script>
+    function filterPre() {
+        var input = document.getElementById('searchBox').value.toLowerCase();
+        var lines = document.querySelectorAll('#logContent > div');
+        for (var i = 0; i < lines.length; i++) {
+            var txt = lines[i].innerText.toLowerCase();
+            lines[i].style.display = txt.includes(input) ? '' : 'none';
+        }
+    }
+    window.onload = function() {
+        var elem = document.getElementById('highlight');
+        if (elem) {
+            elem.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }
+    };
+</script>");
+                sb.AppendLine("</body></html>");
+
+                context.Response.ContentType = "text/html; charset=utf-8";
+                await context.Response.WriteAsync(sb.ToString());
+            });
+            app.MapGet("/context", async (HttpContext context) =>
+    {
+        var fileParam = context.Request.Query["file"].ToString();
+        var lineParam = context.Request.Query["line"].ToString();
+
+        if (string.IsNullOrWhiteSpace(fileParam) || !int.TryParse(lineParam, out int targetLine))
+        {
+            context.Response.StatusCode = 400;
+            await context.Response.WriteAsync("Missing or invalid parameters.");
+            return;
+        }
+
+        var fullPath = Path.Combine("C:\\Users\\Catalyss\\AppData\\LocalLow\\VRChat\\VRChat", fileParam);
+        if (!File.Exists(fullPath))
+        {
+            context.Response.StatusCode = 404;
+            await context.Response.WriteAsync("Original file not found.");
+            return;
+        }
+
+        var lines = await File.ReadAllLinesAsync(fullPath);
+        var sb = new StringBuilder();
+
+        sb.AppendLine("<!DOCTYPE html><html><head><meta charset='UTF-8'><title>Log Context</title>");
+        sb.AppendLine($"<style>{solarizedDarkCss}</style>");
+        sb.AppendLine("</head><body>");
+        sb.AppendLine($"<a href='/logger'>← Back to Index</a>");
+        sb.AppendLine($"<div class='log-header'><strong>File:</strong> {System.Net.WebUtility.HtmlEncode(fileParam)}</div>");
+        sb.AppendLine("<div class='log-entry' id='logContent' style='font-family: monospace;'>");
+
+        for (int i = 0; i < lines.Length; i++)
+        {
+            var encoded = System.Net.WebUtility.HtmlEncode(lines[i]);
+
+            if (i == targetLine)
+                sb.AppendLine($"<div id='highlight' style='background-color:#073642;color:#eee;padding:4px;border-left:4px solid orange;'>{encoded}</div>");
+            else
+                sb.AppendLine($"<div>{encoded}</div>");
+        }
+
+        sb.AppendLine("</div>");
+        sb.AppendLine(@"
+<script>
+    window.onload = function() {
+        var elem = document.getElementById('highlight');
+        if (elem) {
+            elem.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }
+    };
+</script>");
+        sb.AppendLine("</body></html>");
+
+        context.Response.ContentType = "text/html; charset=utf-8";
+        await context.Response.WriteAsync(sb.ToString());
+    });
+
         }
 
         private static void StartWebServer()
         {
-            webHost = WebHost.CreateDefaultBuilder()
+            var tempwebHost = WebHost.CreateDefaultBuilder();
+            if (!UseHTTPS) tempwebHost.UseUrls($"http://*:{webPort}");
+            if (UseHTTPS) tempwebHost.UseUrls($"https://*:{webPort}");
+
+            tempwebHost.ConfigureKestrel(options =>
+            {
+                if (UseHTTPS)
+                {
+                    // Step 3: Use the generated .pfx file for HTTPS
+                    var pfxFilePath = "./cert/certificate.pfx"; // Set your path here
+                    var password = "your_password"; // Set your password here
+                    options.Listen(IPAddress.Any, webPort, listenOptions =>
+                    {
+                        listenOptions.UseHttps(pfxFilePath, password);
+                    });
+                }
+            })
                 .ConfigureServices(services => services.AddRouting())
                 .Configure(app =>
                 {
                     app.UseWebSockets();
                     app.Use(async (context, next) =>
                     {
-                        if (context.Request.Path == "/ws")
+                        if (context.Request.Path == "/ws" || context.Request.Path == "/" + DNS + "/ws")
                         {
-                            //Console.WriteLine("HEY THIS GOT TRIGGERD");
+                            Console.WriteLine("HEY THIS GOT TRIGGERD");
                             // Console.WriteLine(context.WebSockets.IsWebSocketRequest);
                             if (context.WebSockets.IsWebSocketRequest)
                             {
@@ -190,24 +1797,78 @@ namespace OscWebServer
                         }
                     });
 
-
                     app.UseRouting();
+                    
                     app.UseEndpoints(endpoints =>
                     {
+                        if (logger) AppendLogger(endpoints);
                         endpoints.MapGet("/", async context =>
                         {
                             string indexhtmls = indexHTML;
-                            if (context.Connection.RemoteIpAddress.ToString().Equals("::ffff:127.0.0.1") || context.Connection.RemoteIpAddress.ToString().Equals("::ffff:" + PUBIP))
+                            if (context.Connection.RemoteIpAddress.ToString().Equals("::ffff:127.0.0.1") || context.Connection.RemoteIpAddress.ToString().Equals("::ffff:" + PUBIP) || context.Connection.RemoteIpAddress.ToString().Equals(PUBIP))
                             {
 
                             }
                             else
                             {
-                                indexhtmls = indexhtmls.Replace($"<button onclick=\"location.href=\'http://{PUBIP}/settings\'\">Setting page</button>", "");
+                                indexhtmls = indexhtmls.Replace($"<button onclick=\"location.href=\'{httpsTXTReplace}{DNS}/settings\'\">Setting page</button>", "");
                             }
-                            indexhtmls = indexhtmls.Replace("PUBLICIPGOESHERE",PUBIP);
+                            indexhtmls = indexhtmls.Replace("PUBLICIPGOESHERE", DNS);
                             await context.Response.WriteAsync(indexhtmls);
                         });
+
+                        endpoints.MapPost("/select-avatar", async context =>
+                        {
+                            string avatarId = context.Request.Query["avtr"];
+                            if (string.IsNullOrWhiteSpace(avatarId))
+                            {
+                                context.Response.StatusCode = 400;
+                                await context.Response.WriteAsync("Missing avatar ID");
+                                return;
+                            }
+
+                            // Replace with your actual cookie name and value
+                            string cookieName = "auth"; // or ".ASPXAUTH", etc.
+                                                        // Read the 2FA cookie from a local file
+                            string cookieFilePath = "authcookie.txt"; // You can use an absolute path if needed
+                            if (!File.Exists(cookieFilePath))
+                            {
+                                context.Response.StatusCode = 500;
+                                await context.Response.WriteAsync("Cookie file not found");
+                                return;
+                            }
+
+                            string cookieValue = File.ReadAllText(cookieFilePath).Trim(); // Trim to avoid newline issues
+
+                            using var handler = new HttpClientHandler
+                            {
+                                AutomaticDecompression = DecompressionMethods.GZip | DecompressionMethods.Deflate
+                            };
+
+                            using var client = new HttpClient(handler);
+
+                            client.DefaultRequestHeaders.UserAgent.ParseAdd("UnityPlayer/2022.3.22f1-DWR (UnityWebRequest/1.0, libcurl/8.5.0-DEV)");
+                            client.DefaultRequestHeaders.AcceptEncoding.ParseAdd("deflate, gzip");
+                            client.DefaultRequestHeaders.Accept.ParseAdd("*/*");
+                            client.DefaultRequestHeaders.Add("X-Unity-Version", "2022.3.22f1-DWR");
+
+                            // Add the cookie manually
+                            client.DefaultRequestHeaders.Add("Cookie", $"{cookieName}=\"{cookieValue}\"");
+
+                            try
+                            {
+                                var response = await client.PutAsync($"https://vrchat.com/api/1/avatars/{avatarId}/select", null);
+                                context.Response.StatusCode = (int)response.StatusCode;
+                                await context.Response.WriteAsync(await response.Content.ReadAsStringAsync());
+                            }
+                            catch (Exception ex)
+                            {
+                                context.Response.StatusCode = 500;
+                                await context.Response.WriteAsync($"Error: {ex.Message}");
+                            }
+                        });
+
+
 
                         endpoints.MapPost("/saveState", async context =>
                         {
@@ -248,14 +1909,14 @@ namespace OscWebServer
                         endpoints.MapGet("/settings/routing", async context =>
                         {
 
-                            if (context.Connection.RemoteIpAddress.ToString().Equals("::ffff:127.0.0.1") || context.Connection.RemoteIpAddress.ToString().Equals("::ffff:" + PUBIP))
+                            if (context.Connection.RemoteIpAddress.ToString().Equals("::ffff:127.0.0.1") || context.Connection.RemoteIpAddress.ToString().Equals("::ffff:" + PUBIP) || context.Connection.RemoteIpAddress.ToString().Equals(PUBIP))
                             {
                                 var IDS = CurrentID;
                                 if (CurrentID == "") IDS = "no avatar loaded";
                                 var avatarId = (string)context.Request.RouteValues["avatarId"];
                                 string avatarPageHtml = RoutingHTML
                                     .Replace("{{AVATARID}}", avatarId)
-                                    .Replace("INSERTPUBLICIP", PUBIP)
+                                    .Replace("INSERTPUBLICIP", DNS)
                                     .Replace("AVATARIDPLEASEBEHERE", IDS);  // Replace placeholder with actual AvatarID
                                 await context.Response.WriteAsync(avatarPageHtml);
                                 return;
@@ -268,7 +1929,7 @@ namespace OscWebServer
 
                         endpoints.MapPost("/api/saveRouting", async (HttpContext context) =>
                         {
-                            if (context.Connection.RemoteIpAddress.ToString().Equals("::ffff:127.0.0.1") || context.Connection.RemoteIpAddress.ToString().Equals("::ffff:" + PUBIP))
+                            if (context.Connection.RemoteIpAddress.ToString().Equals("::ffff:127.0.0.1") || context.Connection.RemoteIpAddress.ToString().Equals("::ffff:" + PUBIP) || context.Connection.RemoteIpAddress.ToString().Equals(PUBIP))
                             {
                                 var routingConfig = await context.Request.ReadFromJsonAsync<List<RoutingConfiguration>>();
                                 var jsonString = JsonConvert.SerializeObject(routingConfig, Formatting.Indented);
@@ -284,7 +1945,7 @@ namespace OscWebServer
 
                         endpoints.MapGet("/api/loadRouting", async (HttpContext context) =>
                         {
-                            if (context.Connection.RemoteIpAddress.ToString().Equals("::ffff:127.0.0.1") || context.Connection.RemoteIpAddress.ToString().Equals("::ffff:" + PUBIP))
+                            if (context.Connection.RemoteIpAddress.ToString().Equals("::ffff:127.0.0.1") || context.Connection.RemoteIpAddress.ToString().Equals("::ffff:" + PUBIP) || context.Connection.RemoteIpAddress.ToString().Equals(PUBIP))
                             {
                                 var routingJsonPath = "parameters/Routing.json";
                                 var jsonString = await File.ReadAllTextAsync(routingJsonPath);
@@ -300,24 +1961,25 @@ namespace OscWebServer
                         // New Settings Page (localhost only)
                         endpoints.MapGet("/settings", async context =>
                         {
-                            if (context.Connection.RemoteIpAddress.ToString().Equals("::ffff:127.0.0.1") || context.Connection.RemoteIpAddress.ToString().Equals("::ffff:" + PUBIP))
+                            if (context.Connection.RemoteIpAddress.ToString().Equals("::ffff:127.0.0.1") || context.Connection.RemoteIpAddress.ToString().Equals("::ffff:" + PUBIP) || context.Connection.RemoteIpAddress.ToString().Equals(PUBIP))
                             {
                                 var IDS = CurrentID;
                                 if (CurrentID == "") IDS = "no avatar loaded";
-                                string settingsHtml = SettingsHTML.Replace("INSERTPUBLICIP", PUBIP).Replace("AVATARIDPLEASEBEHERE", IDS);
-                                if(Directory.Exists("parameters")){
-                                DirectoryInfo taskDirectory = new DirectoryInfo("parameters");
-                                FileInfo[] taskFiles = taskDirectory.GetFiles("avatar_*");
-                                foreach (FileInfo item in taskFiles)
+                                string settingsHtml = SettingsHTML.Replace("INSERTPUBLICIP", DNS).Replace("AVATARIDPLEASEBEHERE", IDS);
+                                if (Directory.Exists("parameters"))
                                 {
-                                    if (item.Name.Contains("avatar_Global_settings")) continue;
+                                    DirectoryInfo taskDirectory = new DirectoryInfo("parameters");
+                                    FileInfo[] taskFiles = taskDirectory.GetFiles("avatar_*");
+                                    foreach (FileInfo item in taskFiles)
+                                    {
+                                        if (item.Name.Contains("avatar_Global_settings")) continue;
 
-                                    string name = item.Name.ToString().Split("avatar_")[1].Split("_settings.json")[0];
-                                    settingsHtml = settingsHtml.Replace("<!-- List of parameters for this AvatarID will go here -->",
-                                                         "<!-- List of parameters for this AvatarID will go here -->\n"
-                                    + $"<button onclick=\"location.href=\'http://{PUBIP}/settings/{name}\'\">{name}</button>"
-                                    );
-                                }
+                                        string name = item.Name.ToString().Split("avatar_")[1].Split("_settings.json")[0];
+                                        settingsHtml = settingsHtml.Replace("<!-- List of parameters for this AvatarID will go here -->",
+                                                             "<!-- List of parameters for this AvatarID will go here -->\n"
+                                        + $"<button onclick=\"location.href=\'{httpsTXTReplace}{DNS}/settings/{name}\'\">{name}</button>"
+                                        );
+                                    }
                                 }
                                 await context.Response.WriteAsync(settingsHtml);
                                 return;
@@ -332,7 +1994,7 @@ namespace OscWebServer
                         // Handle API requests for saving/loading settings
                         endpoints.MapPost("/api/saveSettings", async context =>
                         {
-                            if (context.Connection.RemoteIpAddress.ToString().Equals("::ffff:127.0.0.1") || context.Connection.RemoteIpAddress.ToString().Equals("::ffff:" + PUBIP))
+                            if (context.Connection.RemoteIpAddress.ToString().Equals("::ffff:127.0.0.1") || context.Connection.RemoteIpAddress.ToString().Equals("::ffff:" + PUBIP) || context.Connection.RemoteIpAddress.ToString().Equals(PUBIP))
                             {
                                 using (StreamReader reader = new StreamReader(context.Request.Body))
                                 {
@@ -350,7 +2012,7 @@ namespace OscWebServer
 
                         endpoints.MapPost("/api/loadSettings", async context =>
                         {
-                            if (context.Connection.RemoteIpAddress.ToString().Equals("::ffff:127.0.0.1") || context.Connection.RemoteIpAddress.ToString().Equals("::ffff:" + PUBIP))
+                            if (context.Connection.RemoteIpAddress.ToString().Equals("::ffff:127.0.0.1") || context.Connection.RemoteIpAddress.ToString().Equals("::ffff:" + PUBIP) || context.Connection.RemoteIpAddress.ToString().Equals(PUBIP))
                             {
                                 var settings = File.ReadAllText("parameters/" + "settings.json");
                                 await context.Response.WriteAsync(settings);
@@ -364,14 +2026,14 @@ namespace OscWebServer
                         endpoints.MapGet("/settings/{avatarId}", async context =>
                         {
 
-                            if (context.Connection.RemoteIpAddress.ToString().Equals("::ffff:127.0.0.1") || context.Connection.RemoteIpAddress.ToString().Equals("::ffff:" + PUBIP))
+                            if (context.Connection.RemoteIpAddress.ToString().Equals("::ffff:127.0.0.1") || context.Connection.RemoteIpAddress.ToString().Equals("::ffff:" + PUBIP) || context.Connection.RemoteIpAddress.ToString().Equals(PUBIP))
                             {
                                 var IDS = CurrentID;
                                 if (CurrentID == "") IDS = "no avatar loaded";
                                 var avatarId = (string)context.Request.RouteValues["avatarId"];
                                 string avatarPageHtml = avatarsettingsHTML
                                     .Replace("{{AVATARID}}", avatarId)
-                                    .Replace("INSERTPUBLICIP", PUBIP)
+                                    .Replace("INSERTPUBLICIP", DNS)
                                     .Replace("AVATARIDPLEASEBEHERE", IDS);  // Replace placeholder with actual AvatarID
                                 await context.Response.WriteAsync(avatarPageHtml);
                                 return;
@@ -385,7 +2047,7 @@ namespace OscWebServer
                         /// API to save settings for a specific AvatarID
                         endpoints.MapPost("/api/saveAvatarSettings/{avatarId}", async context =>
                         {
-                            if (context.Connection.RemoteIpAddress.ToString().Equals("::ffff:127.0.0.1") || context.Connection.RemoteIpAddress.ToString().Equals("::ffff:" + PUBIP))
+                            if (context.Connection.RemoteIpAddress.ToString().Equals("::ffff:127.0.0.1") || context.Connection.RemoteIpAddress.ToString().Equals("::ffff:" + PUBIP) || context.Connection.RemoteIpAddress.ToString().Equals(PUBIP))
                             {
                                 var avatarId = (string)context.Request.RouteValues["avatarId"];
                                 using (StreamReader reader = new StreamReader(context.Request.Body))
@@ -404,7 +2066,7 @@ namespace OscWebServer
                         /// API to delete settings for a specific AvatarID
                         endpoints.MapPost("/api/delete/{avatarId}", async context =>
                         {
-                            if (context.Connection.RemoteIpAddress.ToString().Equals("::ffff:127.0.0.1") || context.Connection.RemoteIpAddress.ToString().Equals("::ffff:" + PUBIP))
+                            if (context.Connection.RemoteIpAddress.ToString().Equals("::ffff:127.0.0.1") || context.Connection.RemoteIpAddress.ToString().Equals("::ffff:" + PUBIP) || context.Connection.RemoteIpAddress.ToString().Equals(PUBIP))
                             {
                                 var avatarId = (string)context.Request.RouteValues["avatarId"];
                                 using (StreamReader reader = new StreamReader(context.Request.Body))
@@ -425,7 +2087,7 @@ namespace OscWebServer
                         // API to load settings for a specific AvatarID
                         endpoints.MapGet("/api/loadAvatarSettings/{avatarId}", async context =>
                         {
-                            if (context.Connection.RemoteIpAddress.ToString().Equals("::ffff:127.0.0.1") || context.Connection.RemoteIpAddress.ToString().Equals("::ffff:" + PUBIP))
+                            if (context.Connection.RemoteIpAddress.ToString().Equals("::ffff:127.0.0.1") || context.Connection.RemoteIpAddress.ToString().Equals("::ffff:" + PUBIP) || context.Connection.RemoteIpAddress.ToString().Equals(PUBIP))
                             {
                                 var avatarId = (string)context.Request.RouteValues["avatarId"];
                                 string filePath = "parameters/" + $"avatar_{avatarId}_settings.json";
@@ -449,7 +2111,7 @@ namespace OscWebServer
                         // API to save AvatarID list
                         endpoints.MapPost("/api/saveAvatarListing", async context =>
                         {
-                            if (context.Connection.RemoteIpAddress.ToString().Equals("::ffff:127.0.0.1") || context.Connection.RemoteIpAddress.ToString().Equals("::ffff:" + PUBIP))
+                            if (context.Connection.RemoteIpAddress.ToString().Equals("::ffff:127.0.0.1") || context.Connection.RemoteIpAddress.ToString().Equals("::ffff:" + PUBIP) || context.Connection.RemoteIpAddress.ToString().Equals(PUBIP))
                             {
                                 using (StreamReader reader = new StreamReader(context.Request.Body))
                                 {
@@ -467,7 +2129,7 @@ namespace OscWebServer
 
                         endpoints.MapGet("/api/loadAvatarListing", async context =>
                         {
-                            if (context.Connection.RemoteIpAddress.ToString().Equals("::ffff:127.0.0.1") || context.Connection.RemoteIpAddress.ToString().Equals("::ffff:" + PUBIP))
+                            if (context.Connection.RemoteIpAddress.ToString().Equals("::ffff:127.0.0.1") || context.Connection.RemoteIpAddress.ToString().Equals("::ffff:" + PUBIP) || context.Connection.RemoteIpAddress.ToString().Equals(PUBIP))
                             {
                                 string filePath = "parameters/" + "AvatarListing.json";
                                 if (File.Exists(filePath))
@@ -533,13 +2195,32 @@ namespace OscWebServer
                             }
                             await context.Response.WriteAsync("OSC Message Sent");
                         });
-                    });
-                })
-                .UseUrls($"http://*:{webPort}")
-                .Build();
-            webHost.Run();
-        }
 
+                        //for https certification /!\ VERY IMPORTANT /!\
+                        endpoints.MapGet("/.well-known/{**filePath}", async (HttpContext context, string filePath) =>
+                        {
+                            // Normalize the path
+                            string normalizedPath = Path.Combine(".well-known", filePath.Replace('/', Path.DirectorySeparatorChar));
+
+                            if (!File.Exists(normalizedPath))
+                            {
+                                context.Response.StatusCode = 404;
+                                await context.Response.WriteAsync("Not found");
+                                return;
+                            }
+
+                            await context.Response.SendFileAsync(normalizedPath);
+                        });
+
+
+                    });
+                });
+
+
+            webHost = tempwebHost.Build();
+            webHost.Run();
+
+        }
         private static async Task UpdateHtml(string oscValue)
         {
             var oscFolderPath = Path.Combine(
@@ -598,11 +2279,11 @@ namespace OscWebServer
                 htmlContent.AppendLine("</style></head><body>");
 
                 htmlContent.AppendLine("<h1>OSC Remote Control Panel</h1>");
-                htmlContent.AppendLine($"  <button onclick=\"location.href=\'http://{PUBIP}/settings\'\">Setting page</button>");
+                htmlContent.AppendLine($"  <button onclick=\"location.href=\'{httpsTXTReplace}{DNS}/settings\'\">Setting page</button>");
 
                 // Top Bar HTML (For Save/Load buttons)
                 htmlContent.AppendLine("<div class=\"container\">");
-                for (int i = 0; i < 5; i++)
+                for (int i = 0; i < saveCount; i++)
                 {
                     htmlContent.AppendLine($"<div class=\"button-container\">");
                     htmlContent.AppendLine($"  <button onclick=\"saveState({i})\">Save Slot #{i}</button>");
@@ -848,7 +2529,7 @@ namespace OscWebServer
 
                 // Add WebSocket Handling
                 htmlContent.AppendLine("<script>");
-                htmlContent.AppendLine($"  var ws = new WebSocket(`ws://{PUBIP}:{webPort}/ws`);");
+                htmlContent.AppendLine($"  var ws = new WebSocket(`{wsTXTReplace}{DNS}:{webPort}/ws`);");
                 htmlContent.AppendLine();
                 htmlContent.AppendLine("  ws.onopen = function() {");
                 htmlContent.AppendLine("    console.log('WebSocket connection established.');");

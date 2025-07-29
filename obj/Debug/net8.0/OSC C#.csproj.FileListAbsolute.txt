@@ -24,6 +24,7 @@ F:\Java\OSC C#\bin\Debug\net8.0\states\avtr_a26e662a-ed27-4697-9a03-12fef3153f17
 F:\Java\OSC C#\bin\Debug\net8.0\states\avtr_a26e662a-ed27-4697-9a03-12fef3153f17_state_1.json
 F:\Java\OSC C#\bin\Debug\net8.0\states\avtr_a26e662a-ed27-4697-9a03-12fef3153f17_state_2.json
 F:\Java\OSC C#\bin\Debug\net8.0\states\avtr_a26e662a-ed27-4697-9a03-12fef3153f17_state_3.json
+F:\Java\OSC C#\bin\Debug\net8.0\OSC C#.staticwebassets.endpoints.json
 F:\Java\OSC C#\bin\Debug\net8.0\OSC C#.exe
 F:\Java\OSC C#\bin\Debug\net8.0\OSC C#.deps.json
 F:\Java\OSC C#\bin\Debug\net8.0\OSC C#.runtimeconfig.json
@@ -39,14 +40,17 @@ F:\Java\OSC C#\obj\Debug\net8.0\OSC C#.AssemblyInfoInputs.cache
 F:\Java\OSC C#\obj\Debug\net8.0\OSC C#.AssemblyInfo.cs
 F:\Java\OSC C#\obj\Debug\net8.0\OSC C#.csproj.CoreCompileInputs.cache
 F:\Java\OSC C#\obj\Debug\net8.0\OSC C#.MvcApplicationPartsAssemblyInfo.cache
+F:\Java\OSC C#\obj\Debug\net8.0\OSC C#.sourcelink.json
+F:\Java\OSC C#\obj\Debug\net8.0\scopedcss\bundle\OSC C#.styles.css
 F:\Java\OSC C#\obj\Debug\net8.0\staticwebassets.build.json
 F:\Java\OSC C#\obj\Debug\net8.0\staticwebassets.development.json
+F:\Java\OSC C#\obj\Debug\net8.0\staticwebassets.build.endpoints.json
 F:\Java\OSC C#\obj\Debug\net8.0\staticwebassets\msbuild.OSC C#.Microsoft.AspNetCore.StaticWebAssets.props
+F:\Java\OSC C#\obj\Debug\net8.0\staticwebassets\msbuild.OSC C#.Microsoft.AspNetCore.StaticWebAssetEndpoints.props
 F:\Java\OSC C#\obj\Debug\net8.0\staticwebassets\msbuild.build.OSC C#.props
 F:\Java\OSC C#\obj\Debug\net8.0\staticwebassets\msbuild.buildMultiTargeting.OSC C#.props
 F:\Java\OSC C#\obj\Debug\net8.0\staticwebassets\msbuild.buildTransitive.OSC C#.props
 F:\Java\OSC C#\obj\Debug\net8.0\staticwebassets.pack.json
-F:\Java\OSC C#\obj\Debug\net8.0\scopedcss\bundle\OSC C#.styles.css
 F:\Java\OSC C#\obj\Debug\net8.0\OSC C#.csproj.Up2Date
 F:\Java\OSC C#\obj\Debug\net8.0\OSC C#.dll
 F:\Java\OSC C#\obj\Debug\net8.0\refint\OSC C#.dll
