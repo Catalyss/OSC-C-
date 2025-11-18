@@ -9,10 +9,19 @@
       "OSC C#/1.0.0": {
         "dependencies": {
           "CoreOSC": "1.0.0",
+          "Jint": "4.4.2",
           "Microsoft.AspNetCore": "2.2.0"
         },
         "runtime": {
           "OSC C#.dll": {}
+        }
+      },
+      "Acornima/1.2.0": {
+        "runtime": {
+          "lib/net8.0/Acornima.dll": {
+            "assemblyVersion": "1.2.0.0",
+            "fileVersion": "1.2.0.0"
+          }
         }
       },
       "CoreOSC/1.0.0": {
@@ -20,6 +29,17 @@
           "lib/netstandard2.0/CoreOSC.dll": {
             "assemblyVersion": "1.0.0.0",
             "fileVersion": "1.0.0.0"
+          }
+        }
+      },
+      "Jint/4.4.2": {
+        "dependencies": {
+          "Acornima": "1.2.0"
+        },
+        "runtime": {
+          "lib/net8.0/Jint.dll": {
+            "assemblyVersion": "4.4.2.0",
+            "fileVersion": "4.0.0.0"
           }
         }
       },
@@ -416,12 +436,26 @@
       "serviceable": false,
       "sha512": ""
     },
+    "Acornima/1.2.0": {
+      "type": "package",
+      "serviceable": true,
+      "sha512": "sha512-pT3kn/WrVzz4NmrzN5zOAVDOK2VuQFJ7VivKviKmKbbzppMVEToEvnAaVhxerXclptvjpBUudhOwUtDsRjrMYQ==",
+      "path": "acornima/1.2.0",
+      "hashPath": "acornima.1.2.0.nupkg.sha512"
+    },
     "CoreOSC/1.0.0": {
       "type": "package",
       "serviceable": true,
       "sha512": "sha512-yyliqL0OiTmDJpGC8g+nRBWYZiU8ob/jhA+mQErRZiw9L9YP4LHV332VVcWs0ANqjCEhEHWQllXEU2P0+uE9SA==",
       "path": "coreosc/1.0.0",
       "hashPath": "coreosc.1.0.0.nupkg.sha512"
+    },
+    "Jint/4.4.2": {
+      "type": "package",
+      "serviceable": true,
+      "sha512": "sha512-+2G0SkWWYiHjvCWFYgWgLUDVvemMxjgmlnT3X4p8cllSt1SX3jgO7PSqxenTW4yDE4dOQ8BLRmbuiC8ANp1trw==",
+      "path": "jint/4.4.2",
+      "hashPath": "jint.4.4.2.nupkg.sha512"
     },
     "Microsoft.AspNetCore/2.2.0": {
       "type": "package",

@@ -869,7 +869,7 @@ namespace OscWebServer
                                     .appendField('Send OSC')
                                     .appendField(new Blockly.FieldTextInput('/address'), 'PARAM')
                                     .appendField('with')
-                                    .appendField(new Blockly.FieldNumber(1, 1, 999, 1, 'ARRAY_SIZE' ,this.updateShape_.bind(this)))
+                                    .appendField(new Blockly.FieldNumber(1, 1, 999, 1, this.updateShape_.bind(this)),'ARRAY_SIZE')
                                     .appendField('values');
 
                                 this.updateShape_();
