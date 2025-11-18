@@ -175,7 +175,7 @@ namespace OscWebServer
 
                 engine.SetValue("sendOSC", new Action<string, object, string>((param, value, type) =>
                 {
-                    SendOscFromScript(param, value, type);
+                    SendOscFromScript(param, new object[]{value}, type);
                 }));
 
                 context.JintEngine = engine;
@@ -248,34 +248,34 @@ namespace OscWebServer
             if (parametersStates.ContainsKey((address, type)))
             {
                 parametersStates[(address, type)] = floatValue;
-                SendOscFromScript(address, floatValue, type);
+                SendOscFromScript(address, new object[]{floatValue}, type);
             }
             else
             {
                 parametersStates.Add((address, type), floatValue);
-                SendOscFromScript(address, floatValue, type);
+                SendOscFromScript(address, new object[]{floatValue}, type);
             }
         }
 
-        private static async void SendOscFromScript(string param, object value, string type)
+        private static async void SendOscFromScript(string param, object[] value, string type)
         {
             try
             {
                 var oscSender = new UdpClient("127.0.0.1", oscPortOut);
 
-                if (type == "Float" && float.TryParse(value.ToString(), out var floatValue))
+                if (type == "Float" && float.TryParse(value[0].ToString(), out var floatValue))
                 {
                     var message = new CoreOSC.OscMessage(new CoreOSC.Address(param), new object[] { floatValue });
                     await oscSender.SendMessageAsync(message);
                 }
-                else if (type == "Int" && int.TryParse(value.ToString(), out var intValue))
+                else if (type == "Int" && int.TryParse(value[0].ToString(), out var intValue))
                 {
                     var message = new CoreOSC.OscMessage(new CoreOSC.Address(param), new object[] { intValue });
                     await oscSender.SendMessageAsync(message);
                 }
                 else if (type == "Bool")
                 {
-                    var boolValue = value.ToString().ToLower() == "true" || value.ToString() == "1";
+                    var boolValue = value[0].ToString().ToLower() == "true" || value[0].ToString() == "1";
                     var message = new OscMessage(
                         address: new Address(param),
                         arguments: new object[] { boolValue ? CoreOSC.OscTrue.True : CoreOSC.OscFalse.False });
@@ -285,7 +285,7 @@ namespace OscWebServer
                 {
                     var message = new OscMessage(
                         address: new Address(param),
-                        arguments: new object[] { value });
+                        arguments: new object[] { value[0] });
                     await oscSender.SendMessageAsync(message);
                 }
             }
@@ -501,8 +501,7 @@ namespace OscWebServer
                                     'contents': [
                                         {{'kind': 'block', 'type': 'get_parameter'}},
                                         {{'kind': 'block', 'type': 'set_parameter'}},
-                                        {{'kind': 'block', 'type': 'send_osc'}},
-                                        {{'kind': 'block', 'type': 'send_osc_array'}}
+                                        {{'kind': 'block', 'type': 'send_osc'}}
                                     ]
                                 }},
                                 {{
@@ -855,64 +854,6 @@ namespace OscWebServer
                             const type = block.getFieldValue('TYPE');
                             const value = Blockly.JavaScript.valueToCode(block, 'VALUE', Blockly.JavaScript.ORDER_NONE) || '0';
                             return `sendOSC('${{param}}', ${{value}}, '${{type}}');\n`;
-                        }};
-
-                        Blockly.Blocks['send_osc_array'] = {{
-                            init: function() {{
-                                this.itemCount_ = 1;
-
-                                this.setPreviousStatement(true, null);
-                                this.setNextStatement(true, null);
-                                this.setColour('#4ECDC4');
-
-                                this.appendDummyInput()
-                                    .appendField('Send OSC')
-                                    .appendField(new Blockly.FieldTextInput('/address'), 'PARAM')
-                                    .appendField('with')
-                                    .appendField(new Blockly.FieldNumber(1, 1, 999, 1, this.updateShape_.bind(this)),'ARRAY_SIZE')
-                                    .appendField('values');
-
-                                this.updateShape_();
-                            }},
-
-                            updateShape_: function() {{
-                                // Remove all existing value inputs
-                                let i = 0;
-                                while (this.getInput('ITEM' + i)) {{
-                                    this.removeInput('ITEM' + i);
-                                    i++;
-                                }}
-
-                                // Get the desired array size from the number field
-                                var size = this.getFieldValue('ARRAY_SIZE');
-                                this.itemCount_ = parseInt(size) || 1;
-
-                                // Add new item inputs based on array size
-                                for (let i = 0; i < this.itemCount_; i++) {{
-                                    this.appendValueInput('ITEM' + i)
-                                        .setCheck(null)
-                                        .appendField('value ' + (i + 1));
-                                }}
-                            }}
-                        }};
-
-                        Blockly.JavaScript['send_osc_array'] = function(block) {{
-                            var param = block.getFieldValue('PARAM');
-                            var items = [];
-                            for (let i = 0; i < block.itemCount_; i++) {{
-                                var v = Blockly.JavaScript.valueToCode(block, 'ITEM' + i, Blockly.JavaScript.ORDER_NONE) || 'null';
-                                items.push(v);
-                            }}
-                            return `sendOSC('${{param}}', [${{items.join(', ')}}]);\\n`;
-                        }};
-                        Blockly.JavaScript.forBlock['send_osc_array'] = function(block) {{
-                            var param = block.getFieldValue('PARAM');
-                            var items = [];
-                            for (let i = 0; i < block.itemCount_; i++) {{
-                                var v = Blockly.JavaScript.valueToCode(block, 'ITEM' + i, Blockly.JavaScript.ORDER_NONE) || 'null';
-                                items.push(v);
-                            }}
-                            return `sendOSC('${{param}}', [${{items.join(', ')}}]);\\n`;
                         }};
                     }}
                 </script>";
