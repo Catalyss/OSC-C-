@@ -1,3 +1,0 @@
-﻿<Project>
-  <Import Project="..\build\OSC C#.props" />
-</Project>

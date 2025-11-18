@@ -10,6 +10,7 @@
 
   <ItemGroup>
     <PackageReference Include="CoreOSC" Version="1.0.0" />
+    <PackageReference Include="Jint" Version="4.4.2" />
     <PackageReference Include="Microsoft.AspNetCore" Version="2.2.0" />
     
   </ItemGroup>

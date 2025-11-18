@@ -1,10 +1,12 @@
 {
   "version": 2,
-  "dgSpecHash": "j2S3oKiEnmc=",
+  "dgSpecHash": "j01rByEikIE=",
   "success": true,
   "projectFilePath": "F:\\Java\\OSC C#\\OSC C#.csproj",
   "expectedPackageFiles": [
+    "C:\\Users\\Catalyss\\.nuget\\packages\\acornima\\1.2.0\\acornima.1.2.0.nupkg.sha512",
     "C:\\Users\\Catalyss\\.nuget\\packages\\coreosc\\1.0.0\\coreosc.1.0.0.nupkg.sha512",
+    "C:\\Users\\Catalyss\\.nuget\\packages\\jint\\4.4.2\\jint.4.4.2.nupkg.sha512",
     "C:\\Users\\Catalyss\\.nuget\\packages\\microsoft.aspnetcore\\2.2.0\\microsoft.aspnetcore.2.2.0.nupkg.sha512",
     "C:\\Users\\Catalyss\\.nuget\\packages\\microsoft.aspnetcore.authentication.abstractions\\2.2.0\\microsoft.aspnetcore.authentication.abstractions.2.2.0.nupkg.sha512",
     "C:\\Users\\Catalyss\\.nuget\\packages\\microsoft.aspnetcore.authentication.core\\2.2.0\\microsoft.aspnetcore.authentication.core.2.2.0.nupkg.sha512",

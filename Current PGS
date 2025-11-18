@@ -1,4 +1,4 @@
-﻿using System.Net.WebSockets;
+using System.Net.WebSockets;
 using System.Text;
 using Microsoft.AspNetCore;
 using Newtonsoft.Json.Linq;
@@ -15,7 +15,6 @@ using Microsoft.AspNetCore.Hosting;
 using System.Net.Http.Headers;
 using static LogProcessor;
 using System.Xml;
-using Jint;
 
 namespace OscWebServer
 {
@@ -34,7 +33,6 @@ namespace OscWebServer
         private static string wsTXTReplace = "ws://";
         private static bool UseHTTPS = false;
         private static bool logger;
-        private static int currentAvatarState = -1;
 
         // HTML placeholders
         private static string avatarsettingsHTML = "..."; // your HTML string here
@@ -77,16 +75,15 @@ namespace OscWebServer
             { "EyeHeightAsPercent", "Float" },
         };
 
-
+        
         public static Dictionary<string, JObject> ScriptStore = new Dictionary<string, JObject>();
 
         // Script engine state
         private static Dictionary<int, ScriptContext> activeScripts = new Dictionary<int, ScriptContext>();
         private static System.Timers.Timer updateTimer;
         private static System.Timers.Timer networkUpdateTimer;
-        private static string PreviousLog;
         #endregion
-
+        
         #region Script Engine
         public class ScriptContext
         {
@@ -117,7 +114,7 @@ namespace OscWebServer
         {
             if (CurrentID == "none") return;
 
-            var filePath = Path.Combine("scripts", $"{CurrentID}_script_state_{currentAvatarState}_{slot}.json");
+            var filePath = Path.Combine("states", $"{CurrentID}_state_{slot}.json");
             if (!File.Exists(filePath)) return;
 
             try
@@ -144,33 +141,27 @@ namespace OscWebServer
 
                 var engine = new Engine(options =>
                 {
-                    //options.TimeoutInterval(TimeSpan.FromDays(Double.MaxValue));
-                    //options.LimitRecursion(0);
+                    options.TimeoutInterval(TimeSpan.FromSeconds(5));
+                    options.LimitRecursion(100);
                 });
 
                 // Bridge OSC parameters to JavaScript
                 BridgeParametersToScript(engine);
 
                 // Add custom API functions
-                engine.SetValue("setParameter", new Action<string, object, string>((name, value, type) =>
+                engine.SetValue("setParameter", new Action<string, object>((name, value) =>
                 {
-                    SetParameterFromScript(name, value, type);
+                    SetParameterFromScript(name, value);
                 }));
 
-                engine.SetValue("getParameter", new Func<string, string, object>((name, type) =>
+                engine.SetValue("getParameter", new Func<string, object>((name) =>
                 {
-                    return GetParameterFromScript(name, type);
+                    return GetParameterFromScript(name);
                 }));
 
                 engine.SetValue("log", new Action<object>((msg) =>
                 {
                     Console.WriteLine($"[Script {slot}] {msg}");
-                    var broadcastMessage = "{\"action\":\"logtoscriptconsole\",\"message\":\"[Script " + slot + "] " + msg + "\"}";
-                    if (PreviousLog != broadcastMessage)
-                    {
-                        PreviousLog = broadcastMessage;
-                        WebSocketHandler.BroadcastMessage(broadcastMessage);
-                    }
                 }));
 
                 engine.SetValue("sendOSC", new Action<string, object, string>((param, value, type) =>
@@ -205,19 +196,6 @@ namespace OscWebServer
             }
         }
 
-        public static void StopAllScript()
-        {
-            foreach (var slot in activeScripts.Keys.ToList())
-            {
-                if (activeScripts.ContainsKey(slot))
-                {
-                    activeScripts[slot].IsRunning = false;
-                    activeScripts.Remove(slot);
-                    Console.WriteLine($"Script stopped for slot {slot}");
-                }
-            }
-        }
-
         private static void BridgeParametersToScript(Engine engine)
         {
             foreach (var param in parametersStates)
@@ -227,33 +205,30 @@ namespace OscWebServer
             }
         }
 
-        private static object GetParameterFromScript(string name, string type)
+        private static object GetParameterFromScript(string name)
         {
             var address = $"/avatar/parameters/{name}";
-            if (parametersStates.TryGetValue((address, type), out var value))
+            foreach (var param in parametersStates)
             {
-                if (type == "Bool")
-                {
-                    return value != 0f;
-                }
-                return value;
+                if (param.Key.Item1 == address)
+                    return param.Value;
             }
             return 0f;
         }
 
-        private static void SetParameterFromScript(string name, object value, string type)
+        private static void SetParameterFromScript(string name, object value)
         {
             var address = $"/avatar/parameters/{name}";
             float floatValue = Convert.ToSingle(value);
-            if (parametersStates.ContainsKey((address, type)))
+
+            foreach (var param in parametersStates.Keys.ToList())
             {
-                parametersStates[(address, type)] = floatValue;
-                SendOscFromScript(address, floatValue, type);
-            }
-            else
-            {
-                parametersStates.Add((address, type), floatValue);
-                SendOscFromScript(address, floatValue, type);
+                if (param.Item1 == address)
+                {
+                    parametersStates[param] = floatValue;
+                    SendOscFromScript(address, floatValue, param.Item2);
+                    break;
+                }
             }
         }
 
@@ -281,23 +256,10 @@ namespace OscWebServer
                         arguments: new object[] { boolValue ? CoreOSC.OscTrue.True : CoreOSC.OscFalse.False });
                     await oscSender.SendMessageAsync(message);
                 }
-                else if (type == "String")
-                {
-                    var message = new OscMessage(
-                        address: new Address(param),
-                        arguments: new object[] { value });
-                    await oscSender.SendMessageAsync(message);
-                }
             }
             catch (Exception ex)
             {
                 Console.WriteLine($"Error sending OSC from script: {ex.Message}");
-                var broadcastMessage = "{\"action\":\"logtoscriptconsole\",\"message\":\"Error sending OSC from script : " + ex.Message + "\"}";
-                if (PreviousLog != broadcastMessage)
-                {
-                    PreviousLog = broadcastMessage;
-                    WebSocketHandler.BroadcastMessage(broadcastMessage);
-                }
             }
         }
 
@@ -318,14 +280,7 @@ namespace OscWebServer
             }
             catch (Exception ex)
             {
-                if (ex.Message.Contains("Can only invoke functions") || ex.Message.Contains("Index was outside the bounds of the array.") || ex.Message.Contains("The given key 'delegate' was not present in the dictionary.")) return;
                 Console.WriteLine($"Error executing {eventName} in slot {slot}: {ex.Message}");
-                var broadcastMessage = "{\"action\":\"logtoscriptconsole\",\"message\":\"Error in script slot " + slot + " during " + eventName + ": " + ex.Message + "\"}";
-                if (PreviousLog != broadcastMessage)
-                {
-                    PreviousLog = "Error in script slot " + slot + " during " + ": " + ex.Message;
-                    WebSocketHandler.BroadcastMessage(broadcastMessage);
-                }
             }
         }
 
@@ -345,11 +300,11 @@ namespace OscWebServer
             }
         }
 
-        public static void TriggerParameterChangedEvent(string paramName, object value, string type)
+        public static void TriggerParameterChangedEvent(string paramName, object value)
         {
             foreach (var slot in activeScripts.Keys.ToList())
             {
-                TriggerScriptEvent(slot, "onParameterChanged", paramName, value, type);
+                TriggerScriptEvent(slot, "onParameterChanged", paramName, value);
             }
         }
         #endregion
@@ -369,7 +324,6 @@ namespace OscWebServer
                         <div style=""display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;"">
                             <h2 style=""margin:0;"">Blockly Script Editor</h2>
                             <div style=""display:flex; gap:8px;"">
-                                <button onclick=""stopScript()"" style=""background:#f44336; padding:8px 16px; border:none; border-radius:6px; color:#000; cursor:pointer;"">⏹ Stop Script</button>
                                 <button onclick=""runScript()"" style=""background:#4caf50; padding:8px 16px; border:none; border-radius:6px; color:#000; cursor:pointer;"">▶ Run Script</button>
                                 <button onclick=""saveScript()"" style=""background:#2196f3; padding:8px 16px; border:none; border-radius:6px; color:#fff; cursor:pointer;"">💾 Save</button>
                                 <button id=""close-scripting"" onclick=""closeScripting()"" style=""background:#f44336; padding:8px 16px; border:none; border-radius:6px; color:#fff; cursor:pointer;"">✕ Close</button>
@@ -395,6 +349,7 @@ namespace OscWebServer
                     </div>
                 </div>
 
+                <script src=""https://unpkg.com/blockly/blockly.min.js""></script>
                 <script>
                     let blocklyWorkspace;
                     let currentScriptSlot = 0;
@@ -426,9 +381,6 @@ namespace OscWebServer
                                     const xml = Blockly.utils.xml.textToDom(data.workspace);
                                     Blockly.Xml.domToWorkspace(xml, blocklyWorkspace);
                                 }}
-                                else {{
-                                    blocklyWorkspace.clear();
-                                }}
                             }})
                             .catch(err => console.error('Failed to load script:', err));
                     }}
@@ -450,6 +402,7 @@ namespace OscWebServer
                         .then(r => r.text())
                         .then(msg => {{
                             logToConsole('Script saved to slot ' + currentScriptSlot);
+                            alert(msg);
                         }});
                     }}
 
@@ -460,25 +413,15 @@ namespace OscWebServer
                                 logToConsole('Script started: ' + msg);
                             }});
                     }}
-                    function stopScript() {{
-                        fetch('/stopScript?slot=' + currentScriptSlot, {{ method: 'POST' }})
-                            .then(r => r.text())
-                            .then(msg => {{
-                                logToConsole('Script started: ' + msg);
-                            }});
-                    }}
 
                     function logToConsole(msg) {{
                         const console = document.getElementById('scriptConsole');
                         const time = new Date().toLocaleTimeString();
-                        console.textContent += `[${{time}}] ${{msg}}\n`;
+                        console.textContent += `[${{time}}] ${{msg}}\\n`;
                         console.scrollTop = console.scrollHeight;
                     }}
 
                     function initBlockly() {{
-
-                        defineCustomBlocks();
-
                         const toolbox = {{
                             'kind': 'categoryToolbox',
                             'contents': [
@@ -489,7 +432,6 @@ namespace OscWebServer
                                     'contents': [
                                         {{'kind': 'block', 'type': 'on_start'}},
                                         {{'kind': 'block', 'type': 'on_parameter_changed'}},
-                                        {{'kind': 'block', 'type': 'on_osc_recieved'}},
                                         {{'kind': 'block', 'type': 'on_update'}},
                                         {{'kind': 'block', 'type': 'on_network_update'}}
                                     ]
@@ -501,8 +443,7 @@ namespace OscWebServer
                                     'contents': [
                                         {{'kind': 'block', 'type': 'get_parameter'}},
                                         {{'kind': 'block', 'type': 'set_parameter'}},
-                                        {{'kind': 'block', 'type': 'send_osc'}},
-                                        {{'kind': 'block', 'type': 'send_osc_array'}}
+                                        {{'kind': 'block', 'type': 'send_osc'}}
                                     ]
                                 }},
                                 {{
@@ -571,16 +512,12 @@ namespace OscWebServer
                             }})
                         }});
 
-                        blocklyWorkspace.addChangeListener(() => {{
-                            let code = '// No blocks yet';
-                            try {{
-                                code = Blockly.JavaScript.workspaceToCode(blocklyWorkspace);
-                            }} catch (e) {{
-                                console.warn('Blockly code generation skipped:', e);
-                            }}
-                            document.getElementById('generatedCode').textContent = code;
-                        }});
+                        defineCustomBlocks();
 
+                        blocklyWorkspace.addChangeListener(() => {{
+                            const code = Blockly.JavaScript.workspaceToCode(blocklyWorkspace);
+                            document.getElementById('generatedCode').textContent = code || '// No blocks yet';
+                        }});
 
                         selectScriptSlot(0);
                     }}
@@ -597,102 +534,24 @@ namespace OscWebServer
                         }};
                         Blockly.JavaScript['on_start'] = function(block) {{
                             const statements = Blockly.JavaScript.statementToCode(block, 'DO');
-                            return `function onStart() {{\n${{statements}}}}\n`;
-                        }};
-                        Blockly.JavaScript.forBlock['on_start'] = function(block) {{
-                            const statements = Blockly.JavaScript.statementToCode(block, 'DO');
-                            return `function onStart() {{\n${{statements}}}}\n`;
+                            return `function onStart() {{\\n${{statements}}}}\\n`;
                         }};
 
                         // Event: OnParameterChanged
                         Blockly.Blocks['on_parameter_changed'] = {{
-                            init: function () {{
-                        
-                                const dropdown = new Blockly.FieldDropdown([
-                                    ['Select', 'Select'],
-                                    ['Custom…', '__custom__'],
-                                    // Insert your parameter names
-                                    {string.Join(",", parametersStates.Keys.Select(p =>
-            {
-                var name = p.Item1.Replace("/avatar/parameters/", "").Replace("'", "\\'");
-                return $"['{name}','{name}']";
-            }))}
-                                ], function (newValue) {{
-                        
-                                    if (newValue === '__custom__') {{
-                                        const block = this.getSourceBlock();
-                        
-                                        // Remove existing container
-                                        block.removeInput('PARAM_CONTAINER');
-                        
-                                        // Add a new PARAM text field
-                                        block.appendDummyInput('PARAM_CONTAINER')
-                                            .appendField('🔔 When parameter')
-                                            .appendField(new Blockly.FieldTextInput('paramName'), 'PARAM')
-                                            .appendField(new Blockly.FieldDropdown([
-                                                ['Float', 'Float'],
-                                                ['Int', 'Int'],
-                                                ['Bool', 'Bool'],
-                                                ['String', 'String']
-                                            ]), 'TYPE')
-                                            .appendField('changes');
-                                    }}
-                                }});
-                        
-                                // Initial UI (dropdown version)
-                                this.appendDummyInput('PARAM_CONTAINER')
+                            init: function() {{
+                                this.appendDummyInput()
                                     .appendField('🔔 When parameter')
-                                    .appendField(dropdown, 'PARAM')
-                                    .appendField(new Blockly.FieldDropdown([
-                                        ['Float', 'Float'],
-                                        ['Int', 'Int'],
-                                        ['Bool', 'Bool'],
-                                        ['String', 'String']
-                                    ]), 'TYPE')
+                                    .appendField(new Blockly.FieldTextInput('paramName'), 'PARAM')
                                     .appendField('changes');
-                        
-                                this.appendStatementInput('DO')
-                                    .setCheck(null);
-                        
+                                this.appendStatementInput('DO').setCheck(null);
                                 this.setColour('#FF6B6B');
                             }}
                         }};
                         Blockly.JavaScript['on_parameter_changed'] = function(block) {{
                             const param = block.getFieldValue('PARAM');
-                            const typecheck = block.getFieldValue('TYPE');
                             const statements = Blockly.JavaScript.statementToCode(block, 'DO');
-                            return `function onParameterChanged(name, value ,type) {{\n  if (name === '${{param}}' && type === '${{typecheck}}') {{\n${{statements}}  }}\n}}\n`;
-                        }};
-                        Blockly.JavaScript.forBlock['on_parameter_changed'] = function(block) {{
-                            const param = block.getFieldValue('PARAM');
-                            const typecheck = block.getFieldValue('TYPE');
-                            const statements = Blockly.JavaScript.statementToCode(block, 'DO');
-                            return `function onParameterChanged(name, value ,type) {{\n  if (name === '${{param}}' && type === '${{typecheck}}') {{\n${{statements}}  }}\n}}\n`;
-                        }};
-
-                        // Event: OnOSCRecieved
-                        Blockly.Blocks['on_osc_recieved'] = {{
-                            init: function() {{
-                                this.appendDummyInput()
-                                    .appendField('🔔 When ')
-                                    .appendField(new Blockly.FieldTextInput('/address'), 'PARAM')
-                                    .appendField(new Blockly.FieldDropdown([['Float', 'Float'], ['Int', 'Int'], ['Bool', 'Bool'], ['String', 'String']]), 'TYPE')
-                                    .appendField('recieved');
-                                this.appendStatementInput('DO').setCheck(null);
-                                this.setColour('#FF6B6B');
-                            }}
-                        }};
-                        Blockly.JavaScript['on_osc_recieved'] = function(block) {{
-                            const param = block.getFieldValue('PARAM');
-                            const typecheck = block.getFieldValue('TYPE');
-                            const statements = Blockly.JavaScript.statementToCode(block, 'DO');
-                            return `function onOSCRecieved(name, value, type) {{\n  if (name === '${{param}}' && type === '${{typecheck}}') {{\n${{statements}}  }}\n}}\n`;
-                        }};
-                        Blockly.JavaScript.forBlock['on_osc_recieved'] = function(block) {{
-                            const param = block.getFieldValue('PARAM');
-                            const typecheck = block.getFieldValue('TYPE');
-                            const statements = Blockly.JavaScript.statementToCode(block, 'DO');
-                            return `function onOSCRecieved(name, value, type) {{\n  if (name === '${{param}}' && type === '${{typecheck}}') {{\n${{statements}}  }}\n}}\n`;
+                            return `function onParameterChanged(name, value) {{\\n  if (name === '${{param}}') {{\\n${{statements}}  }}\\n}}\\n`;
                         }};
 
                         // Event: OnUpdate (60Hz)
@@ -705,12 +564,7 @@ namespace OscWebServer
                         }};
                         Blockly.JavaScript['on_update'] = function(block) {{
                             const statements = Blockly.JavaScript.statementToCode(block, 'DO');
-                            return `function onUpdate() {{\n${{statements}}}}\n`;
-                        }};
-
-                        Blockly.JavaScript.forBlock['on_update'] = function(block) {{
-                            const statements = Blockly.JavaScript.statementToCode(block, 'DO');
-                            return `function onUpdate() {{\n${{statements}}}}\n`;
+                            return `function onUpdate() {{\\n${{statements}}}}\\n`;
                         }};
 
                         // Event: OnNetworkUpdate (10Hz)
@@ -723,121 +577,49 @@ namespace OscWebServer
                         }};
                         Blockly.JavaScript['on_network_update'] = function(block) {{
                             const statements = Blockly.JavaScript.statementToCode(block, 'DO');
-                            return `function onNetworkUpdate() {{\n${{statements}}}}\n`;
-                        }};
-                        Blockly.JavaScript.forBlock['on_network_update'] = function(block) {{
-                            const statements = Blockly.JavaScript.statementToCode(block, 'DO');
-                            return `function onNetworkUpdate() {{\n${{statements}}}}\n`;
+                            return `function onNetworkUpdate() {{\\n${{statements}}}}\\n`;
                         }};
 
                         // Get Parameter
                         Blockly.Blocks['get_parameter'] = {{
-                          init: function () {{
-                            const dropdown = new Blockly.FieldDropdown([
-                              ['Select', 'Select'],
-                              ['Custom…', '__custom__'],
-                              {string.Join(",", parametersStates.Keys.Select(p =>
-            {
-                var name = p.Item1.Replace("/avatar/parameters/", "").Replace("'", "\\'");
-                return $"['{name}','{name}']";
-            }))}
-                              ], function(newValue) {{
-                              if (newValue === '__custom__') {{
-                                const block = this.getSourceBlock();
-
-                                // Remove existing input
-                                block.removeInput('PARAM_CONTAINER');
-
-                                // Replace with text input
-                                block.appendDummyInput('PARAM_CONTAINER')
+                            init: function() {{
+                                this.appendDummyInput()
                                     .appendField('Get')
-                                    .appendField(new Blockly.FieldTextInput('paramName'), 'PARAM')
-                                    .appendField(new Blockly.FieldDropdown([['Float', 'Float'], ['Int', 'Int'], ['Bool', 'Bool'], ['String', 'String']]), 'TYPE');
-
-                              }}
-                            }});
-
-                            // Initial input
-                            this.appendDummyInput('PARAM_CONTAINER')
-                                .appendField('Get')
-                                .appendField(dropdown, 'PARAM')
-                                .appendField(new Blockly.FieldDropdown([['Float', 'Float'], ['Int', 'Int'], ['Bool', 'Bool'], ['String', 'String']]), 'TYPE');
-
-
-                            this.setOutput(true, 'Number');
-                            this.setColour('#4ECDC4');
-                          }}
+                                    .appendField(new Blockly.FieldTextInput('paramName'), 'PARAM');
+                                this.setOutput(true, 'Number');
+                                this.setColour('#4ECDC4');
+                            }}
                         }};
-
                         Blockly.JavaScript['get_parameter'] = function(block) {{
-                          const param = block.getFieldValue('PARAM');
-                          const typecheck = block.getFieldValue('TYPE');
-                          return [`getParameter('${{param}}','${{typecheck}}')`, Blockly.JavaScript.ORDER_FUNCTION_CALL];
-                        }};
-                        Blockly.JavaScript.forBlock['get_parameter'] = function(block) {{
-                          const param = block.getFieldValue('PARAM');
-                          const typecheck = block.getFieldValue('TYPE');
-                          return [`getParameter('${{param}}','${{typecheck}}')`, Blockly.JavaScript.ORDER_FUNCTION_CALL];
+                            const param = block.getFieldValue('PARAM');
+                            return [`getParameter('${{param}}')`, Blockly.JavaScript.ORDER_FUNCTION_CALL];
                         }};
 
+                        // Set Parameter
                         Blockly.Blocks['set_parameter'] = {{
-                          init: function () {{
-                            const dropdown = new Blockly.FieldDropdown([
-                              ['Select', 'Select'],
-                              ['Custom…', '__custom__'],
-                              {string.Join(",", parametersStates.Keys.Select(p =>
-            {
-                var name = p.Item1.Replace("/avatar/parameters/", "").Replace("'", "\\'");
-                return $"['{name}','{name}']";
-            }))}
-                            ], function(newValue) {{
-                              if (newValue === '__custom__') {{
-                                // Replace dropdown with text input
-                                this.getSourceBlock().removeInput('PARAM_CONTAINER');
-                                this.getSourceBlock().appendDummyInput('PARAM_CONTAINER')
+                            init: function() {{
+                                this.appendValueInput('VALUE')
                                     .appendField('Set')
                                     .appendField(new Blockly.FieldTextInput('paramName'), 'PARAM')
-                                    .appendField(new Blockly.FieldDropdown([['Float', 'Float'], ['Int', 'Int'], ['Bool', 'Bool'], ['String', 'String']]), 'TYPE')
                                     .appendField('to');
-                              }}
-                            }});
-                        
-                            this.appendDummyInput('PARAM_CONTAINER')
-                                .appendField('Set')
-                                .appendField(dropdown, 'PARAM')
-                                .appendField(new Blockly.FieldDropdown([['Float', 'Float'], ['Int', 'Int'], ['Bool', 'Bool'], ['String', 'String']]), 'TYPE')
-                                .appendField('to');
-                        
-                            this.appendValueInput('VALUE');
-                        
-                            this.setPreviousStatement(true);
-                            this.setNextStatement(true);
-                            this.setColour('#4ECDC4');
-                          }}
+                                this.setPreviousStatement(true, null);
+                                this.setNextStatement(true, null);
+                                this.setColour('#4ECDC4');
+                            }}
                         }};
                         Blockly.JavaScript['set_parameter'] = function(block) {{
                             const param = block.getFieldValue('PARAM');
-                            const typecheck = block.getFieldValue('TYPE');
                             const value = Blockly.JavaScript.valueToCode(block, 'VALUE', Blockly.JavaScript.ORDER_NONE) || '0';
-                            return `setParameter('${{param}}', ${{value}}, '${{typecheck}}');\n`;
+                            return `setParameter('${{param}}', ${{value}});\\n`;
                         }};
-
-                        Blockly.JavaScript.forBlock['set_parameter'] = function(block) {{
-                            const param = block.getFieldValue('PARAM');
-                            const typecheck = block.getFieldValue('TYPE');
-                            const value = Blockly.JavaScript.valueToCode(block, 'VALUE', Blockly.JavaScript.ORDER_NONE) || '0';
-                            return `setParameter('${{param}}', ${{value}}, '${{typecheck}}');\n`;
-                        }};
-
-
 
                         // Send OSC
                         Blockly.Blocks['send_osc'] = {{
                             init: function() {{
                                 this.appendValueInput('VALUE')
                                     .appendField('Send OSC')
-                                    .appendField(new Blockly.FieldTextInput('/address'), 'PARAM')
-                                    .appendField(new Blockly.FieldDropdown([['Float', 'Float'], ['Int', 'Int'], ['Bool', 'Bool'], ['String', 'String']]), 'TYPE')
+                                    .appendField(new Blockly.FieldTextInput('/avatar/parameters/param'), 'PARAM')
+                                    .appendField(new Blockly.FieldDropdown([['Float', 'Float'], ['Int', 'Int'], ['Bool', 'Bool']]), 'TYPE')
                                     .appendField('value');
                                 this.setPreviousStatement(true, null);
                                 this.setNextStatement(true, null);
@@ -848,71 +630,7 @@ namespace OscWebServer
                             const param = block.getFieldValue('PARAM');
                             const type = block.getFieldValue('TYPE');
                             const value = Blockly.JavaScript.valueToCode(block, 'VALUE', Blockly.JavaScript.ORDER_NONE) || '0';
-                            return `sendOSC('${{param}}', ${{value}}, '${{type}}');\n`;
-                        }};
-                        Blockly.JavaScript.forBlock['send_osc'] = function(block) {{
-                            const param = block.getFieldValue('PARAM');
-                            const type = block.getFieldValue('TYPE');
-                            const value = Blockly.JavaScript.valueToCode(block, 'VALUE', Blockly.JavaScript.ORDER_NONE) || '0';
-                            return `sendOSC('${{param}}', ${{value}}, '${{type}}');\n`;
-                        }};
-
-                        Blockly.Blocks['send_osc_array'] = {{
-                            init: function() {{
-                                this.itemCount_ = 1;
-
-                                this.setPreviousStatement(true, null);
-                                this.setNextStatement(true, null);
-                                this.setColour('#4ECDC4');
-
-                                this.appendDummyInput()
-                                    .appendField('Send OSC')
-                                    .appendField(new Blockly.FieldTextInput('/address'), 'PARAM')
-                                    .appendField('with')
-                                    .appendField(new Blockly.FieldNumber(1, 1, 999, 1, 'ARRAY_SIZE' ,this.updateShape_.bind(this)))
-                                    .appendField('values');
-
-                                this.updateShape_();
-                            }},
-
-                            updateShape_: function() {{
-                                // Remove all existing value inputs
-                                let i = 0;
-                                while (this.getInput('ITEM' + i)) {{
-                                    this.removeInput('ITEM' + i);
-                                    i++;
-                                }}
-
-                                // Get the desired array size from the number field
-                                var size = this.getFieldValue('ARRAY_SIZE');
-                                this.itemCount_ = parseInt(size) || 1;
-
-                                // Add new item inputs based on array size
-                                for (let i = 0; i < this.itemCount_; i++) {{
-                                    this.appendValueInput('ITEM' + i)
-                                        .setCheck(null)
-                                        .appendField('value ' + (i + 1));
-                                }}
-                            }}
-                        }};
-
-                        Blockly.JavaScript['send_osc_array'] = function(block) {{
-                            var param = block.getFieldValue('PARAM');
-                            var items = [];
-                            for (let i = 0; i < block.itemCount_; i++) {{
-                                var v = Blockly.JavaScript.valueToCode(block, 'ITEM' + i, Blockly.JavaScript.ORDER_NONE) || 'null';
-                                items.push(v);
-                            }}
-                            return `sendOSC('${{param}}', [${{items.join(', ')}}]);\\n`;
-                        }};
-                        Blockly.JavaScript.forBlock['send_osc_array'] = function(block) {{
-                            var param = block.getFieldValue('PARAM');
-                            var items = [];
-                            for (let i = 0; i < block.itemCount_; i++) {{
-                                var v = Blockly.JavaScript.valueToCode(block, 'ITEM' + i, Blockly.JavaScript.ORDER_NONE) || 'null';
-                                items.push(v);
-                            }}
-                            return `sendOSC('${{param}}', [${{items.join(', ')}}]);\\n`;
+                            return `sendOSC('${{param}}', ${{value}}, '${{type}}');\\n`;
                         }};
                     }}
                 </script>";
@@ -944,66 +662,6 @@ namespace OscWebServer
                 </html>";
         }
 
-        private static string GetParametersHtml()
-        {
-            return @"<!DOCTYPE html>
-                        <html lang=""en"">
-                        <head>
-                        <meta charset=""UTF-8"">
-                        <meta name=""viewport"" content=""width=device-width, initial-scale=1.0"">
-                        <style>
-                            body { background-color: #121212; color: #e0e0e0; font-family: 'Segoe UI', Arial, sans-serif; padding: 12px; }
-                            h1 { margin: 8px 0 12px 0; }
-                            .top-bar { display:flex; gap:12px; align-items:center; flex-wrap:wrap; margin-bottom:12px; }
-                            .controls { display:flex; gap:8px; align-items:center; margin: 10px 0; }
-                            .controls button { padding:6px 10px; border-radius:6px; border:none; cursor:pointer; background:#333; color:#e0e0e0; }
-                            .controls button.active { background:#4caf50; color:#061206; }
-                            .controls input[type='search'] { padding:6px 8px; border-radius:6px; border:1px solid #333; background:#111; color:#e0e0e0; }
-                            #parameters-grid {display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 14px; align-items: start;}
-                            .parameter-container { border:1px solid #333; padding:10px; border-radius:8px; background:#1a1a1a; display:flex; flex-direction:column; gap:8px; }
-                            .side-panel { position: fixed; left: 0; top: 0; width: 180px; height: 100%; background: #1a1a1a; border-right: 1px solid #333; padding: 10px; display: flex; flex-direction: column; gap: 8px; overflow-y: auto; }
-                            .side-panel button { padding: 6px 8px; border-radius: 6px; border: none; background: #333; color: #e0e0e0; cursor: pointer; font-size: 0.9rem; }
-                            .side-panel button.active { background: #4caf50; color: #061206; }
-                            .button-container { display: flex; gap: 8px; }
-                            .save-load-panel { display: flex; flex-direction: column; gap: 8px; }
-                            footer { margin-top:14px; color:#999; }
-                        </style>
-                        </head>
-                        <body>
-
-                        <div class='side-panel'>
-                            <button onclick=""location.href='/'"">Main</button>
-                            <div></div>
-                            <button>Nothing but cricket</button>
-                            <div></div>
-                            <button onclick=""location.href='/'"">Add new</button>
-                        </div>
-
-                        <div style='margin-left:200px; padding:12px;'>
-                            <h1>YAVOT Parameters blacklist/whitelist</h1>
-
-                            <div class=""controls"">
-                                <div id=""sort-buttons"">
-                                    <button id=""sort-default"" class=""active"">Unsorted</button>
-                                    <button id=""sort-name"">By Name</button>
-                                    <button id=""sort-type"">By Type</button>
-                                    <button id=""sort-group"">By Groups</button>
-                                    <button id=""sort-minimal"">Minimalist</button>
-                                </div>
-                                <input id=""param-search"" type=""search"" placeholder=""Search parameters..."">
-                            </div>
-
-                            <div id=""parameters-grid""></div>
-
-                            <footer>
-                                <p>Current OSC avatar ID: none</p>
-                            </footer>
-                        </div>
-
-                        </body>
-                        </html>";
-        }
-
         private static string GetIndexHtml(bool isHost, string currentID = "none")
         {
             var settingsButton = isHost ? $@"<button onclick=""location.href='/settings'"">Setting page</button>
@@ -1022,52 +680,17 @@ namespace OscWebServer
                 <meta charset=""UTF-8"">
                 <meta name=""viewport"" content=""width=device-width, initial-scale=1.0"">
                 <style>
-                    /* --- Colors & base --- */
                     body { background-color: #121212; color: #e0e0e0; font-family: 'Segoe UI', Arial, sans-serif; padding: 12px; }
                     h1 { margin: 8px 0 12px 0; }
-
-                    /* Top controls */
                     .top-bar { display:flex; gap:12px; align-items:center; flex-wrap:wrap; margin-bottom:12px; }
-                    .save-load-row { display:flex; gap:8px; flex-wrap:wrap; }
-
-                    /* Sort/Search bar */
                     .controls { display:flex; gap:8px; align-items:center; margin: 10px 0; }
                     .controls button { padding:6px 10px; border-radius:6px; border:none; cursor:pointer; background:#333; color:#e0e0e0; }
                     .controls button.active { background:#4caf50; color:#061206; }
-                    .controls input[type='search'] { padding:6px 8px; border-radius:6px; border:1px solid #333; background:#111; color:#e0e0e0; }
-
-                    /* Grid */
                     #parameters-grid {display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 14px; align-items: start;}
-
-                    /* Parameter card */
-                    .parameter-container { height: auto; border:1px solid #333; padding:10px; border-radius:8px; background:#1a1a1a; display:flex; flex-direction:column; gap:8px; }
-                    .param-header { font-weight:700; text-align:center; }
-                    .range-wrapper { display:flex; align-items:center; gap:10px; }
-                    .range-slider { flex:1; }
-                    .value-input {padding:8px; border-radius:4px; border:1px solid #555; background:#222; color:#fff; text-align:center; }
-
-                    /* Bool style */
-                    .toggle-container { display:flex; align-items:center; gap:8px; justify-content:space-between; }
-                    .bool-button { flex:1; padding:8px; border-radius:8px; border:none; cursor:pointer; font-weight:700; text-align:center; }
-                    .bool-button.on { background:#4caf50; }
-                    .bool-button.off { background:#555; color:#ccc; }
-
-                    .lock-button { padding:6px 8px; border-radius:6px; border:none; cursor:pointer; background:#888; color:#fff; }
-                    .lock-button.locked { background:#f44336; }
-
-                    /* Group folders */
-                    .group-folder { height: auto; border:1px solid #2b2b2b; background:#161616; border-radius:8px; padding:8px; }
-                    .group-header { cursor:pointer; font-weight:700; padding:6px; border-radius:6px; background:#111; }
-                    .group-content { margin-top:8px; display:none; }
-
-                    /* --- Side panel --- */
-                    .side-panel { position: fixed; left: 0; top: 0; width: 180px; height: 100%; background: #1a1a1a; border-right: 1px solid #333; padding: 10px; display: flex; flex-direction: column; gap: 8px; overflow-y: auto; }
-                    .side-panel button { padding: 6px 8px; border-radius: 6px; border: none; background: #333; color: #e0e0e0; cursor: pointer; font-size: 0.9rem; }
-                    .side-panel button.active { background: #4caf50; color: #061206; }
-                    .button-container { display: flex; gap: 8px; }
-                    .save-load-panel { display: flex; flex-direction: column; gap: 8px; }
+                    .parameter-container { border:1px solid #333; padding:10px; border-radius:8px; background:#1a1a1a; }
+                    .side-panel { position: fixed; left: 0; top: 0; width: 180px; height: 100%; background: #1a1a1a; border-right: 1px solid #333; padding: 10px; overflow-y: auto; }
+                    .side-panel button { padding: 6px 8px; border-radius: 6px; border: none; background: #333; color: #e0e0e0; cursor: pointer; }
                     
-                    /* --- Scripting Modal --- */
                     #scripting-modal { 
                         position: fixed; 
                         top: 0; 
@@ -1090,38 +713,6 @@ namespace OscWebServer
                         flex-direction: column; 
                     }
                     .script-slot-btn.active { background: #4caf50 !important; }
-
-                    /* --- Minimalist View --- */
-                    .minimal-overlay {
-                        background: rgba(255,255,255,0.04);
-                        border: 1px solid rgba(255,255,255,0.08);
-                        padding: 7px 10px;
-                        border-radius: 6px;
-                        margin-bottom: 4px;
-                        display: flex;
-                        justify-content: space-between;
-                        font-size: 14px;
-                    }
-
-                    .min-name { font-weight: 600; }
-                    .min-value { opacity: 0.8; }
-
-                    .min-value.blink {
-                        animation: blinkHighlight 0.4s ease;
-                    }
-                    .minimal-overlay.blink {
-                        animation: blinkHighlight 0.4s ease;
-                    }
-
-                    @keyframes blinkHighlight {
-                        0%   { background-color: rgba(255, 255, 0, 0.6); }
-                        100% { background-color: transparent; }
-                    }
-
-
-
-
-                    footer { margin-top:14px; color:#999; }
                 </style>
                 </head>
                 <body>
@@ -1131,344 +722,49 @@ namespace OscWebServer
                     <div class='save-load-panel'>
                         " + GenerateSaveLoadButtonsHtml() + @"
                     </div>
-                    <div>   
-                    </div>
                 </div>
 
                 <div style='margin-left:200px; padding:12px;'>
                     <h1>OSC Remote Control Panel</h1>
                     <div class=""controls"">
                         <div id=""sort-buttons"">
-                            <button id=""sort-default"" onclick=""setSort('default')"" class=""active"">Unsorted (Default)</button>
-                            <button id=""sort-name"" onclick=""setSort('name')"" >By Name</button>
-                            <button id=""sort-type"" onclick=""setSort('type')"">By Type</button>
-                            <button id=""sort-group"" onclick=""setSort('group')"">By Groups</button>
-                            <button id=""sort-minimal"" onclick=""setSort('minimal')"">Minimalist</button>
+                            <button id=""sort-default"" class=""active"">Unsorted</button>
                         </div>
-                        <input id=""param-search"" type=""search"" placeholder=""Search parameters (name / group)..."">
                     </div>
 
-                    <!-- Parameter grid (populated by client JS) -->
                     <div id=""parameters-grid""></div>
-
+                    
                     " + GetBlocklyModalHtml() + @"
                     
                     " + injectAvatarToggle + @"
 
-                        <footer>
-                            <p>Current OSC avatar ID : " + (currentID != "none" ? currentID : "no avatar loaded") + @"</p>
-                        </footer>
+                    <footer>
+                        <p>Current OSC avatar ID: " + (currentID != "none" ? currentID : "no avatar loaded") + @"</p>
+                    </footer>
                 </div>
 
-                <!-- Common JS (rendering, sorting, saving/loading, websocket) -->
                 <script>
-                    // ParameterList will be set in the server-injected JS (if an avatar is loaded)
-                    window.ParameterList = window.ParameterList || [];
-
-                    // Render helpers
-                    function renderParameters(list) {
-                        const grid = document.getElementById('parameters-grid');
-                        grid.innerHTML = '';
-                        list.forEach(p => {
-                            // Insert DOM: p.html is a full HTML string for the card
-                            const wrapper = document.createElement('div');
-                            wrapper.innerHTML = p.html;
-                            // Ensure IDs are unique in DOM (they were using the param id already)
-                            grid.appendChild(wrapper);
-                        });
-                    }
-
-                    function setActiveSortButton(mode) {
-                        document.querySelectorAll('#sort-buttons button').forEach(b => b.classList.remove('active'));
-                        if (mode === 'default') document.getElementById('sort-default').classList.add('active');
-                        if (mode === 'name') document.getElementById('sort-name').classList.add('active');
-                        if (mode === 'type') document.getElementById('sort-type').classList.add('active');
-                        if (mode === 'group') document.getElementById('sort-group').classList.add('active');
-                        if (mode === 'minimal') document.getElementById('sort-minimal').classList.add('active');
-                    }
-
-                    function setSort(mode) {
-                        setActiveSortButton(mode);
-                        const searchQuery = document.getElementById('param-search').value.trim().toLowerCase();
-                        let list = window.ParameterList.slice();
-
-                        // filter by search
-                        if (searchQuery) {
-                            list = list.filter(p => (p.name && p.name.toLowerCase().includes(searchQuery)) ||
-                                                    (p.group && p.group.toLowerCase().includes(searchQuery)));
-                        }
-
-                        if (mode === 'name') list.sort((a,b) => a.name.localeCompare(b.name));
-                        else if (mode === 'minimal') {
-                            const grid = document.getElementById('parameters-grid');
-
-                            // ensure parameters are rendered normally first
-                            renderParameters(list);
-
-                            // now convert each item into minimal view overlay
-                            Array.from(grid.children).forEach(container => {
-                                const paramEl = container.querySelector('.parameter-container');
-                                if (!paramEl) return;
-
-                                const name = paramEl.querySelector('.param-header')?.textContent || '';
-                                const input = paramEl.querySelector('.value-input');
-                                const toggle = paramEl.querySelector('.bool-button');
-                                
-                                let paramId = '';
-                                if (input) paramId = input.id.replace('input-','');
-                                else if (toggle) paramId = toggle.id;
-
-                                let value = '';
-                                if (input) value = input.value;
-                                else if (toggle) value = toggle.classList.contains('on') ? 'True' : 'False';
-
-                                // hide full control
-                                paramEl.style.display = 'none';
-
-                                // add minimal overlay
-                                const min = document.createElement('div');
-                                min.className = 'minimal-overlay';
-                                min.innerHTML = `
-                                    <div class='min-name'>${name}</div>
-                                    <div class='min-value' id= '${paramId}_minimal_value'>${value}</div>
-                                `;
-                                container.appendChild(min);
-                            });
-
-                            return;
-                        }
-                        else if (mode === 'type') list.sort((a,b) => a.type.localeCompare(b.type));
-                        else if (mode === 'group') {
-                            // group the items into hierarchical foldouts
-                            const groups = {};
-                            list.forEach(p => {
-                                const g = p.group && p.group.length ? p.group : 'Ungrouped';
-                                if (!groups[g]) groups[g] = [];
-                                groups[g].push(p);
-                            });
-
-                            const grid = document.getElementById('parameters-grid');
-                            grid.innerHTML = '';
-
-                            Object.keys(groups).sort().forEach(groupName => {
-                                const idSafe = 'grp_' + groupName.replace(/[^a-z0-9]/gi,'_');
-                                const folder = document.createElement('div');
-                                folder.className = 'group-folder';
-
-                                const header = document.createElement('div');
-                                header.className = 'group-header';
-                                header.textContent = groupName;
-                                header.onclick = () => {
-                                    const content = folder.querySelector('.group-content');
-                                    content.style.display = (content.style.display === 'none') ? 'block' : 'none';
-                                };
-
-                                const content = document.createElement('div');
-                                content.className = 'group-content';
-                                groups[groupName].forEach(p => {
-                                    const tmp = document.createElement('div');
-                                    tmp.innerHTML = p.html;
-                                    content.appendChild(tmp);
-                                });
-
-                                folder.appendChild(header);
-                                folder.appendChild(content);
-                                grid.appendChild(folder);
-                            });
-                            return;
-                        }
-
-                        // default rendering: flat grid
-                        renderParameters(list);
-                    }
-
-                    // search live
-                    document.getElementById('param-search').addEventListener('input', () => {
-                        // reapply current active mode
-                        const active = document.querySelector('#sort-buttons button.active');
-                        const mode = active ? (active.id.replace('sort-','')) : 'default';
-                        setSort(mode);
-                    });
-
-                    function extractValueFromHtml(html) {
-                        // Create a temporary element so we can query the HTML
-                        const tmp = document.createElement('div');
-                        tmp.innerHTML = html;
-
-                        // Bool uses a button with class 'on/off'
-                        const boolBtn = tmp.querySelector('.bool-button');
-                        if (boolBtn) return boolBtn.classList.contains('on') ? 'True' : 'False';
-
-                        // Float/Int use an <input value=''>
-                        const input = tmp.querySelector('input.value-input');
-                        if (input) return input.value;
-
-                        return '';
-                    }
-
-                    // initial render
-                    document.addEventListener('DOMContentLoaded', () => setSort('default'));
-
-                    // Preserve your websocket if you use it to update UI
                     const ws = new WebSocket(`" + DNS + @"/ws`);
-                    ws.onopen = () => console.log('WebSocket connection established.');
-                    ws.onclose = () => console.log('WebSocket connection closed.');
+                    ws.onopen = () => console.log('WebSocket connected');
                     ws.onmessage = event => {
                         try {
                             const data = JSON.parse(event.data);
-
                             if (data.action === 'updateHtml') {
                                 window.location.reload();
-                            } 
-                            else if (data.action === 'logtoscriptconsole') {
-                                logToConsole(data.message);
-                            } 
-                            else if (data.param) {
-
-                                const param = data.param;
-                                const value = data.value;
-
-                                // FLOAT/INT input update
-                                const input = document.getElementById(`input-${param}`);
-                                if (input) {
-                                    input.value = value;
-                                    const id = param;
-                                    const display = document.getElementById(`value-${id}`);
-                                    if (display) display.textContent = parseFloat(value).toFixed(3);
-                                }
-
-                                // BOOL update
-                                const toggleButton = document.getElementById(param);
-                                if (toggleButton) {
-                                    const isOn = value === 'f';
-                                    toggleButton.classList.toggle('on', !isOn);
-                                    toggleButton.classList.toggle('off', isOn);
-                                }
-                                const container = document.getElementById(param)?.closest('div');
-
-                                if (true) {
-                                    const minOverlay = document.getElementById(`${param}_minimal_value`);
-                                    if (minOverlay) {
-                                
-                                        // Update displayed value
-                                        if (value !== 'f' && value !== 't') {
-                                            minOverlay.textContent = value;
-                                        } else {
-                                            const isOn = value === 'f';
-                                            minOverlay.textContent = isOn ? 'False' : 'True';
-                                        }
-                                
-                                        const overlayParent = minOverlay.closest('.minimal-overlay');
-                                        if (overlayParent) {
-                                            overlayParent.classList.remove('blink');   // reset in case still animating
-                                            void overlayParent.offsetWidth;            // force reflow
-                                            overlayParent.classList.add('blink');      // trigger animation
-                                        }else{
-                                            minOverlay.classList.remove('blink');  // reset if still playing
-                                            void minOverlay.offsetWidth;           // force reflow so animation restarts
-                                            minOverlay.classList.add('blink');
-                                        }
-                                    }
-                                }
-
                             }
-
                         } catch (err) {
-                            console.warn('ws message parse error', err);
+                            console.warn('ws error', err);
                         }
                     };
                     
-                </script>
-
-                <!-- Existing JS helpers (locks, sendOsc, save/load) -->
-                <script>
-                function toggleLock(param, type , button) {
-                    const locked = button.classList.toggle('locked');
-                    fetch(`https://catalyss.ddns.net/togglelock?param=${encodeURIComponent(param)}&type=${encodeURIComponent(type)}&locked=${locked}`);
-                }
-
-                function updateSliderFromInput(id, value, reff, type) {
-                    const slider = document.getElementById(`slider-${id}`);
-                    if (!slider) return;
-                    slider.value = value;
-                    updateValueDisplay(id, value);
-                    sendOsc(reff, value, type);
-                }
-
-                function sendOsc(param, value, type) {
-                    fetch(`/sendOsc?param=${encodeURIComponent(param)}&value=${encodeURIComponent(value)}&type=${encodeURIComponent(type)}`);
-                }
-
-                function updateValueDisplay(param, value) {
-                    const el = document.getElementById(`value-${param}`);
-                    if (el) el.textContent = parseFloat(value).toFixed(3);
-                }
-
-                function adjustSlider(id, parm, increment) {
-                    const slider = document.getElementById(`slider-${parm}`);
-                    if (!slider) return;
-                    let newValue = parseFloat(slider.value) + increment;
-                    if (newValue >= slider.min && newValue <= slider.max) {
-                        sendOsc(id, newValue, 'Float');
-                        slider.value = newValue.toFixed(3);
-                        updateValueDisplay(parm, newValue);
+                    function saveState(slot) {
+                        fetch(`/saveState?slot=${slot}`, { method:'POST' });
                     }
-                }
-
-                function incrementValue(id, parm, amount) {
-                    const slider = document.getElementById(`slider-${parm}`);
-                    if (!slider) return;
-                    let newValue = parseInt(slider.value) + amount;
-                    if (newValue >= slider.min && newValue <= slider.max) {
-                        sendOsc(id, newValue, 'Int');
-                        slider.value = newValue;
-                        updateValueDisplay(parm, newValue);
-                    }
-                }
-
-                function toggleBool(id, button) {
-                    const currentValue = button.classList.contains('on');
-                    const newValue = !currentValue;
-                    button.classList.toggle('on', newValue);
-                    button.classList.toggle('off', !newValue);
-                    sendOsc(id, newValue ? 't' : 'f', 'Bool');
-                }
-                </script>
-
-                <!-- Save/load scripts -->
-                <script>
-                function saveState(slot) {
                     
-                    fetch(`/saveState?slot=${slot}&t=${Date.now()}`, { method:'POST', 
-                        headers: { 'Content-Type': 'application/json' },
-                        body: {'':''} // Dummy body to make it POST),
-                    });
-                }
-
-                function loadState(slot) {
-                    fetch(`/loadState?slot=${slot}`)
-                    .then(r => r.json())
-                    .then(state => {
-                        if (state.Toggles) state.Toggles.forEach(t => {
-                            const el = document.getElementById(t.Id);
-                            if (el){
-                            el.classList.toggle('on',  t.Checked);
-                            el.classList.toggle('off',!t.Checked);
-                            }
-                        });
-                        if (state.Sliders) state.Sliders.forEach(s => {
-                            const el = document.getElementById(s.Id.replace(/^slider-/, 'input-'));
-                            if (el){
-                                el.value = s.Value;
-                                if (typeof el.oninput === 'function') {
-                                    el.oninput();
-                                }
-                            }
-                        });                        
-                    });
-                }
+                    function loadState(slot) {
+                        fetch(`/loadState?slot=${slot}`).then(r => r.json());
+                    }
                 </script>
-                <script src=""https://unpkg.com/blockly/blockly.min.js""></script>
                 </body>
             </html>";
         }
@@ -1477,8 +773,8 @@ namespace OscWebServer
         #region Main Entry
         static async Task Main(string[] args)
         {
-            //await BlocklyHandler.Blockly.BLMain(args);
-            //return;
+            await BlocklyHandler.Blockly.BLMain(args);
+            return;
             ParseArguments(args);
             await ConfigureHTTPSIfNeeded();
             await FetchPublicIP();
@@ -1487,7 +783,6 @@ namespace OscWebServer
             StartOscListener();
             StartOscSender();
             Router("parameters/Routing.json");
-            InitializeScriptEngine();
             StartWebServer();
         }
         #endregion
@@ -1581,8 +876,6 @@ namespace OscWebServer
                     Console.WriteLine("Avatar Changed to ID: " + value);
                     if (CurrentID != value)
                     {
-                        StopAllScript();
-                        currentAvatarState = -1;
                         CurrentID = value;
                         lockStates.Clear();
                         parametersStates.Clear();
@@ -1649,16 +942,8 @@ namespace OscWebServer
                     return;
                 }
 
-                if (value != "f" && value != "t")
-                {
-                    parametersStates[(messageReceived.Address.Value, type)] = float.TryParse(value, out var f) ? f : 0f;
-                    TriggerParameterChangedEvent(param, value == null ? 0f : value, type);
-                }
-                else
-                {
-                    parametersStates[(messageReceived.Address.Value, type)] = (value == "t") ? 1f : 0f;
-                    TriggerParameterChangedEvent(param, value == "t" ? true : false, type);
-                }
+                if (value != "f" && value != "t") parametersStates[(messageReceived.Address.Value, type)] = float.TryParse(value, out var f) ? f : 0f;
+                else parametersStates[(messageReceived.Address.Value, type)] = (value == "t") ? 1f : 0f;
                 var broadcastMessage = "{\"param\":\"" + param.Replace("/", "_") + "\",\"value\":\"" + value + "\"}";
                 await WebSocketHandler.BroadcastMessage(broadcastMessage);
             }
@@ -1680,44 +965,6 @@ namespace OscWebServer
             var avatarList = JsonConvert.DeserializeObject<AvatarList>(json);
             bool isInList = Array.Exists(avatarList.AvatarIds, id => id.Equals(input, StringComparison.OrdinalIgnoreCase));
             return avatarList.IsWhiteList ? isInList : !isInList;
-        }
-
-        private static async void SendOscMessage(string param, string value, string type)
-        {
-            var oscSender = new UdpClient("127.0.0.1", oscPortIn);
-
-            if (type == "Float" && float.TryParse(value, out var floatValue))
-            {
-                if (lockStates.ContainsKey((param, type)) && lockStates[(param, type)]) return;
-                parametersStates[(param, type)] = floatValue;
-                var message = new CoreOSC.OscMessage(new CoreOSC.Address(param), new object[] { floatValue });
-                await oscSender.SendMessageAsync(message);
-            }
-            else if (type == "Int" && int.TryParse(value, out var intValue))
-            {
-                if (lockStates.ContainsKey((param, type)) && lockStates[(param, type)]) return;
-                parametersStates[(param, type)] = intValue;
-                var message = new CoreOSC.OscMessage(new CoreOSC.Address(param), new object[] { intValue });
-                await oscSender.SendMessageAsync(message);
-            }
-            else if (type == "Bool")
-            {
-                if (lockStates.ContainsKey((param, type)) && lockStates[(param, type)]) return;
-                parametersStates[(param, type)] = value == "t" ? 1f : 0f;
-                var message = new OscMessage(
-                    address: new Address(param),
-                    arguments: new object[] { value == "t" ? CoreOSC.OscTrue.True : CoreOSC.OscFalse.False });
-                await oscSender.SendMessageAsync(message);
-            }
-            else if (type == "String")
-            {
-                if (lockStates.ContainsKey((param, type)) && lockStates[(param, type)]) return;
-                parametersStates[(param, type)] = value == "t" ? 1f : 0f;
-                var message = new OscMessage(
-                    address: new Address(param),
-                    arguments: new object[] { value });
-                await oscSender.SendMessageAsync(message);
-            }
         }
         #endregion
 
@@ -1774,15 +1021,15 @@ namespace OscWebServer
             var builder = WebHost.CreateDefaultBuilder()
                 .ConfigureKestrel(options =>
                 {
-                    options.Limits.MaxRequestBodySize = null;
-                    if (File.Exists("./cert/certificate.pfx"))
+                  options.Limits.MaxRequestBodySize = null;
+                  if (File.Exists("./cert/certificate.pfx"))
+                  {
+                    options.ListenAnyIP(443, listenOptions =>
                     {
-                        options.ListenAnyIP(443, listenOptions =>
-                        {
-                            listenOptions.UseHttps("./cert/certificate.pfx", "your_password");
-                        });
-                    }
-                    options.ListenAnyIP(8080);
+                      listenOptions.UseHttps("./cert/certificate.pfx", "your_password");
+                    });
+                  }
+                  options.ListenAnyIP(8080);
                 })
                 .ConfigureServices(services => services.AddRouting())
                 .Configure(app =>
@@ -1854,99 +1101,31 @@ namespace OscWebServer
                 await context.Response.WriteAsync(html);
             });
 
-            // Get script from slot
-            endpoints.MapGet("/getScript", async context =>
+            // Map all endpoints here
+            endpoints.MapGet("/fuckoff", async context =>
             {
-                var slot = int.Parse(context.Request.Query["slot"].ToString());
-                var filePath = Path.Combine("scripts", $"{CurrentID}_script_state_{currentAvatarState}_{slot}.json");
-
-                if (File.Exists(filePath))
-                {
-                    var json = File.ReadAllText(filePath);
-                    var scriptState = JsonConvert.DeserializeObject<ScriptState>(json);
-                    var result = new
-                    {
-                        workspace = scriptState?.BlocklyWorkspace ?? "",
-                        code = scriptState?.GeneratedScript ?? ""
-                    };
-                    context.Response.ContentType = "application/json";
-                    await context.Response.WriteAsync(JsonConvert.SerializeObject(result));
-                }
-                else
-                {
-                    context.Response.ContentType = "application/json";
-                    await context.Response.WriteAsync("{}");
-                }
-            });
-
-            // Save script to slot
-            endpoints.MapPost("/saveScript", async context =>
-            {
-
-                if (CurrentID == "none")
-                {
-                    await context.Response.WriteAsync("No valid avatar loaded. Cannot save script.");
-                    return;
-                }
-
-                var body = await new StreamReader(context.Request.Body).ReadToEndAsync();
-                var data = JsonConvert.DeserializeObject<dynamic>(body);
-
-                int slot = (int)data.slot;
-                string workspace = data.workspace;
-                string code = data.code;
-
-                var filePath = Path.Combine("scripts", $"{CurrentID}_script_state_{currentAvatarState}_{slot}.json");
-                Directory.CreateDirectory("scripts");
-
-                ScriptState scriptState = new ScriptState();
-                //if (File.Exists(filePath))
-                //{
-                //    var json = File.ReadAllText(filePath);
-                //    scriptState = JsonConvert.DeserializeObject<ScriptState>(json) ?? new ScriptState();
-                //}
-
-                scriptState.BlocklyWorkspace = workspace;
-                scriptState.GeneratedScript = code;
-
-                await File.WriteAllTextAsync(filePath, JsonConvert.SerializeObject(scriptState, Newtonsoft.Json.Formatting.Indented));
-                await context.Response.WriteAsync($"Script saved to slot {slot}");
-            });
-
-            // Run/start script
-            endpoints.MapPost("/runScript", async context =>
-            {
-                var slot = int.Parse(context.Request.Query["slot"].ToString());
-                Program.LoadAndStartScript(slot);
-                await context.Response.WriteAsync($"Script started for slot {slot}");
-            });
-
-            // Run/start script
-            endpoints.MapPost("/stopScript", async context =>
-            {
-                var slot = int.Parse(context.Request.Query["slot"].ToString());
-                Program.StopScript(slot);
-                await context.Response.WriteAsync($"Script Stopped for slot {slot}");
+                Environment.Exit(0);
+                await context.Response.WriteAsync("No.");
             });
 
             endpoints.MapGet("/settings", async context =>
             {
                 var ishost = IsLocalhostRequest(context);
-                if (!ishost) { await context.Response.WriteAsync(SimpleRedirect()); return; }
+                if (!ishost) {await context.Response.WriteAsync(SimpleRedirect()); return; }
                 string html = GetIndexHtml(ishost);
                 await context.Response.WriteAsync(html);
             });
             endpoints.MapGet("/routing", async context =>
             {
                 var ishost = IsLocalhostRequest(context);
-                if (!ishost) { await context.Response.WriteAsync(SimpleRedirect()); return; }
+                if (!ishost) {await context.Response.WriteAsync(SimpleRedirect()); return; }
                 string html = GetIndexHtml(ishost);
                 await context.Response.WriteAsync(html);
             });
             endpoints.MapGet("/parameter", async context =>
             {
                 var ishost = IsLocalhostRequest(context);
-                if (!ishost) { await context.Response.WriteAsync(SimpleRedirect()); return; }
+                if (!ishost) {await context.Response.WriteAsync(SimpleRedirect()); return; }
                 string html = GetParametersHtml();
                 await context.Response.WriteAsync(html);
             });
@@ -1989,11 +1168,9 @@ namespace OscWebServer
 
             endpoints.MapGet("/loadState", async context =>
             {
-                StopAllScript();
                 var slot = context.Request.Query["slot"].ToString();
                 var filePath = Path.Combine("states", $"{CurrentID}_state_{slot}.json");
-                currentAvatarState = int.TryParse(slot, out var s) ? s : -1;
-                
+
                 if (File.Exists(filePath))
                 {
                     var state = await File.ReadAllTextAsync(filePath);
@@ -2065,17 +1242,12 @@ namespace OscWebServer
                             await oscSender.SendMessageAsync(message);
                         }
                     }
-
+                    
                     await context.Response.WriteAsync(state);
                 }
                 else
                 {
                     await context.Response.WriteAsync("State not found");
-                }
-
-                for (int i = 0; i < saveCount; i++)
-                {
-                    LoadAndStartScript(i);
                 }
             });
 
@@ -2203,6 +1375,131 @@ namespace OscWebServer
         #endregion
 
         #region HTML & File Helpers
+
+        private static string PopulateNodeWithParameters(string currentID, bool isHost)
+        {
+            if (!isHost) return "";
+
+            var oscFolderPath = Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData) + "Low",
+                "VRChat", "VRChat", "OSC"
+            );
+
+            var jsonFilePath = Directory.GetFiles(oscFolderPath, $"{currentID}.json", SearchOption.AllDirectories)
+                                        .FirstOrDefault();
+
+            if (jsonFilePath == null) { Console.WriteLine("JSON file not found."); return ""; }
+
+            var jsonContent = File.ReadAllText(jsonFilePath);
+            var json = JObject.Parse(jsonContent);
+            var parameters = json["parameters"];
+
+            // Group parameters by their "group" name
+            var groups = new Dictionary<string, List<JToken>>();
+
+            foreach (var param in parameters.Reverse())
+            {
+                if (param["output"] == null) continue;
+
+                var name = param["name"].ToString();
+                var address = param["output"]["address"].ToString();
+                var id = address.Replace("/avatar/parameters/", "");
+                if (id.Contains("/")) id = id.Replace("/", "_");
+
+                var type = param["output"]["type"].ToString();
+                if (IsParameterBlocked(id, type)) continue;
+
+                bool isReadOnly = (vRCDefaultParameters.ContainsKey(id) && vRCDefaultParameters[id] == type)
+                                  || param["input"] == null;
+
+                // Use VRChat defaults as read-only group
+                string group = ExtractGroupFromAddress(isReadOnly ?
+                    address.Replace("/avatar/parameters/", "/avatar/parameters/VRChat/") :
+                    address);
+
+                if (!groups.ContainsKey(group))
+                    groups[group] = new List<JToken>();
+
+                groups[group].Add(param);
+            }
+
+            var sb = new StringBuilder();
+            sb.AppendLine($@"
+                <div class='node-group'>
+                    <div class='node-group-header'>Event Nodes</div>
+                    <div class='node-group-content'>
+                        <div class='node-palette-item' draggable='true' data-type='OnStart' data-readonly='false'>OnStart</div>
+                        <div class='node-palette-item' draggable='true' data-type='OnParameterChanged' data-readonly='false'>OnParameterChanged</div>
+                        <div class='node-palette-item' draggable='true' data-type='OnUpdate' data-readonly='false'>OnUpdate</div>
+                        <div class='node-palette-item' draggable='true' data-type='OnVRCNetworkUpdate' data-readonly='false'>OnVRCNetworkUpdate</div>
+                    </div>
+                </div>
+                <div class='node-group'>
+                    <div class='node-group-header'>Logic Nodes</div>
+                    <div class='node-group-content'>
+                        <div class='node-palette-item' draggable='true' data-type='If' data-readonly='false'>If</div>
+                        <div class='node-palette-item' draggable='true' data-type='Math' data-readonly='false'>Math</div>
+                    </div>
+                </div>
+                <div class='node-group'>
+                    <div class='node-group-header'>Variable Nodes</div>
+                    <div class='node-group-content'>
+                        <div class='node-palette-item' draggable='true' data-type='VariableGet' data-readonly='false'>Get Variable</div>
+                        <div class='node-palette-item' draggable='true' data-type='VariableSet' data-readonly='false'>Set Variable</div>
+                    </div>
+                </div>
+                <div class='node-group'>
+                    <div class='node-group-header'>Constants</div>
+                    <div class='node-group-content'>
+                        <div class='node-palette-item' draggable='true' data-type='BoolConstant' data-readonly='false' data-value='false'>Bool Constant</div>
+                        <div class='node-palette-item' draggable='true' data-type='FloatConstant' data-readonly='false' data-value='0'>Float Constant</div>
+                        <div class='node-palette-item' draggable='true' data-type='IntConstant' data-readonly='false' data-value='0'>Int Constant</div>
+                    </div>
+                </div>
+                <div class='node-group'>
+                    <div class='node-group-header'>Avatar Parameters</div>
+                    <div class='node-group-content'>");
+
+            // Build HTML for foldout groups
+            foreach (var kv in groups.OrderBy(g => g.Key))
+            {
+                string groupName = kv.Key == "" ? "Ungrouped" : kv.Key;
+                sb.AppendLine($@"
+                    <div class='node-group'>
+                        <div class='node-group-header'>
+                            {HtmlEncode(groupName)}
+                        </div>
+                        <div class='node-group-content'>");
+
+                foreach (var param in kv.Value)
+                {
+                    var name = param["name"].ToString();
+                    var address = param["output"]["address"].ToString();
+                    var id = address.Replace("/avatar/parameters/", "");
+                    if (id.Contains("/")) id = id.Replace("/", "_");
+
+                    var type = param["output"]["type"].ToString();
+                    bool isReadOnly = (vRCDefaultParameters.ContainsKey(id) && vRCDefaultParameters[id] == type)
+                                      || param["input"] == null;
+
+                    // Get actual value if present
+                    float value = 0f;
+                    if (parametersStates.ContainsKey((address, type)))
+                        value = parametersStates[(address, type)];
+
+                    // Build a draggable node
+                    sb.AppendLine($@"
+                        <div class='node-palette-item' draggable='true' data-type='{type}' data-id='{id}' data-readonly='{isReadOnly.ToString().ToLower()}' data-value='{value}'>
+                            {HtmlEncode(name)} {(isReadOnly ? "(ReadOnly)" : "")}
+                            <div id='{id}_minimal_value'>0</div>
+                        </div>");
+                }
+
+                sb.AppendLine("</div></div>"); // close group content + group div
+            }
+            sb.AppendLine("</div></div>"); // close avatar parameters content
+            return sb.ToString();
+        }
 
         // --- UpdateHtml produces a JS fragment which defines window.ParameterList and contains templates for each parameter ---
         private static string UpdateHtml(string oscValue, bool isHost)
@@ -2374,7 +1671,6 @@ namespace OscWebServer
             }
             return sb.ToString();
         }
-
         private static bool IsParameterBlocked(string id, string type)
         {
             string globalFile = "parameters/avatar_Global_settings.json";
@@ -2553,7 +1849,6 @@ namespace OscWebServer
 
     #region Data Models
     public class State { public List<Toggle> Toggles { get; set; } public List<Slider> Sliders { get; set; } }
-    public class ScriptState { public string BlocklyWorkspace { get; set; } public string GeneratedScript { get; set; } public Dictionary<string, object> UserVariables { get; set; } = new Dictionary<string, object>(); }
     public class Toggle { public string Id { get; set; } public bool Checked { get; set; } }
     public class Slider { public string Id { get; set; } public float Value { get; set; } public string Type { get; set; } }
     public class AvatarList { public string[] AvatarIds { get; set; } public bool IsWhiteList { get; set; } }

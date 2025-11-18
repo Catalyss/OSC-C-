@@ -6,3 +6,10 @@ parameters/
 states/
 bin/Debug/
 authcookie.txt
+bin/
+scripts/
+resrources/
+res/
+bin/
+lib/
+obj/
